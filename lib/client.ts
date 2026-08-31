@@ -2,7 +2,13 @@
 
 /** Small fetch helpers for the browser side. */
 
+import { isLocalMode } from "./localMode";
+import { localApi, localUploadFile, localUploadImages } from "./localStore";
+
 export async function api<T>(url: string, init?: RequestInit): Promise<T> {
+  // LOCAL MODE: everything stays in this browser, no server calls.
+  if (isLocalMode()) return localApi<T>(url, init);
+
   const res = await fetch(url, {
     headers: { "Content-Type": "application/json" },
     ...init,
@@ -15,6 +21,8 @@ export async function api<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 export async function uploadFile(file: File): Promise<{ url: string }> {
+  if (isLocalMode()) return localUploadFile(file);
+
   const form = new FormData();
   form.append("file", file);
   const res = await fetch("/api/upload", { method: "POST", body: form });
@@ -30,6 +38,8 @@ export async function uploadImages(
   view: File,
   thumb?: File,
 ): Promise<{ url: string; thumbUrl?: string }> {
+  if (isLocalMode()) return localUploadImages(view, thumb);
+
   const form = new FormData();
   form.append("file", view);
   if (thumb) form.append("thumb", thumb);

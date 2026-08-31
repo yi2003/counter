@@ -1023,6 +1023,57 @@ button.counter-card:hover,
   border: 1px solid #f2c4c4;
 }
 
+.banner-info {
+  background: var(--primary-soft);
+  color: var(--primary);
+  border: 1px solid #cfdff5;
+}
+
+.btn-outline {
+  background: #fff;
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.btn-outline:hover:not(:disabled) {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.login-or {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 16px 0 12px;
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.login-or::before,
+.login-or::after {
+  content: "";
+  height: 1px;
+  background: var(--border);
+  flex: 1;
+}
+
+.user-chip button.signout {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.user-chip button.signout:hover {
+  color: var(--primary);
+}
+
 /* login page */
 
 .login-wrap {

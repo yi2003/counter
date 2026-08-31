@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { authConfigured, requireUser } from "@/lib/auth";
+import LocalModeButton from "@/components/LocalModeButton";
 
 export const dynamic = "force-dynamic";
 
@@ -49,8 +50,11 @@ export default async function LoginPage({
             <a className="btn google-btn" href="/api/auth/google">
               <GoogleG /> Sign in with Google
             </a>
+            <div className="login-or">or</div>
+            <LocalModeButton />
             <p className="muted login-note">
-              Each Google account only sees its own counters and history.
+              Google keeps every account's counters private and synced across devices. Device-only
+              keeps data in this browser — no account, no sync, nothing leaves your phone.
             </p>
           </>
         ) : (
@@ -63,6 +67,11 @@ export default async function LoginPage({
             <Link className="btn btn-primary" href="/">
               Enter as guest
             </Link>
+            <div className="login-or">or</div>
+            <LocalModeButton />
+            <p className="muted login-note">
+              Device-only mode keeps your counters in this browser — private, no sync.
+            </p>
           </>
         )}
       </div>

@@ -22,7 +22,15 @@ type Busy = "checkin" | "undo" | "reset" | "config" | "delete" | "newsub" | null
 
 const enc = encodeURIComponent;
 
-export default function CounterDetail({ id, user }: { id: string; user: SessionUser }) {
+export default function CounterDetail({
+  id,
+  user,
+  localMode = false,
+}: {
+  id: string;
+  user: SessionUser;
+  localMode?: boolean;
+}) {
   const [state, setState] = useState<AppState | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [busy, setBusy] = useState<Busy>(null);
@@ -250,14 +258,20 @@ export default function CounterDetail({ id, user }: { id: string; user: SessionU
         </div>
       )}
 
-      {storage === "local" && (
+      {localMode && (
+        <div className="banner banner-info">
+          📁 Local mode — this counter and its history live in this browser only.
+        </div>
+      )}
+
+      {!localMode && storage === "local" && (
         <div className="banner banner-danger">
           ⚠️ <strong>Data is not persistent here.</strong> Connect Vercel KV (dashboard → Storage →
           Upstash Redis) so history survives redeploys and syncs to your other devices.
         </div>
       )}
 
-      {storage === "kv" && !blob && (
+      {!localMode && storage === "kv" && !blob && (
         <div className="banner banner-warning">
           🖼️ Images are stored temporarily — connect Vercel Blob so photo proof survives redeploys.
         </div>
@@ -347,9 +361,15 @@ export default function CounterDetail({ id, user }: { id: string; user: SessionU
       </section>
 
       <footer className="footer">
-        {storage === "kv"
-          ? `☁️ Cloud sync enabled (Vercel KV${blob ? " + Blob" : ""})`
-          : "💾 Local dev storage — add KV/Blob env vars to enable cross-device sync"}
+        {localMode ? (
+          <span className="footer-storage">📁 This device only — data stays in this browser</span>
+        ) : (
+          <span className="footer-storage">
+            {storage === "kv"
+              ? `☁️ Cloud sync enabled (Vercel KV${blob ? " + Blob" : ""})`
+              : "💾 Local dev storage — add KV/Blob env vars to enable cross-device sync"}
+          </span>
+        )}
       </footer>
 
       {showCheckin && (

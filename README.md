@@ -11,6 +11,7 @@ A universal, self-hosted check-in counter: customize the project name and total 
 - **Check-in history** — newest-first timeline; every record shows its timestamp, optional note, and an image thumbnail that opens a full-screen preview.
 - **Image upload** — take a photo or pick from the gallery; client-side auto-compression (max width 800 px, JPEG quality 60 %) before upload. Each check-in photo is uploaded as **two files**: a tiny thumbnail (~240 px) for the history list plus the compressed 800 px view for the full-size preview, keeping the timeline light on bandwidth.
 - **Private images** — photos are stored in Vercel Blob as **private** objects and served only through the authenticated `/api/image` proxy. Raw blob URLs are never publicly accessible.
+- **Offline / local mode** — “Use on this device only” on the login page: no account needed, no server calls. Counters, history and photos live in the browser (localStorage + IndexedDB); sign in later to switch to a synced account.
 - **Cross-device sync** — counter data in **Vercel KV (Redis)**, images in **Vercel Blob**.
 - **Mobile-first UX** — ≥44 pt touch targets, press-feedback animations, ring bounce on check-in, toast notifications, loading states, fully responsive.
 

@@ -10,7 +10,13 @@ import ToastHost, { useToasts } from "@/components/ToastHost";
 import UserChip from "@/components/UserChip";
 import { IconPlus } from "@/components/icons";
 
-export default function Home({ user }: { user: SessionUser }) {
+export default function Home({
+  user,
+  localMode = false,
+}: {
+  user: SessionUser;
+  localMode?: boolean;
+}) {
   const [counters, setCounters] = useState<CounterSummary[] | null>(null);
   const [storage, setStorage] = useState<"kv" | "local" | null>(null);
   const [blob, setBlob] = useState(false);
@@ -94,14 +100,22 @@ export default function Home({ user }: { user: SessionUser }) {
         </div>
       </header>
 
-      {user.sub === "guest" && (
+      {localMode && (
+        <div className="banner banner-info">
+          📁 <strong>Local mode</strong> — counters are stored in this browser only and never sent
+          to a server. Clearing the browser's site data erases them. Use “Sign in to sync” in the
+          top bar to switch to a synced account.
+        </div>
+      )}
+
+      {!localMode && user.sub === "guest" && (
         <div className="banner banner-warning">
           🔒 Public mode — anyone with this link can view and edit. Configure Google sign-in to
           lock this app to your account.
         </div>
       )}
 
-      {storage === "local" && (
+      {!localMode && storage === "local" && (
         <div className="banner banner-danger">
           ⚠️ <strong>Your data is not persistent.</strong> No database is connected, so everything
           (including history) is wiped on every redeploy. Fix: Vercel dashboard → your project →{" "}
@@ -110,7 +124,7 @@ export default function Home({ user }: { user: SessionUser }) {
         </div>
       )}
 
-      {storage === "kv" && !blob && (
+      {!localMode && storage === "kv" && !blob && (
         <div className="banner banner-warning">
           🖼️ Counters and history are persistent now, but <strong>images are not</strong> — no Blob
           store is connected. Vercel dashboard → <strong>Storage → Create Database → Blob</strong>{" "}
@@ -132,12 +146,16 @@ export default function Home({ user }: { user: SessionUser }) {
         {counters.length === 0
           ? "Create your first counter to get started."
           : "Tip: open a counter to add sub-counters, notes and photo proof."}
-        {storage && (
-          <span className="footer-storage">
-            {storage === "kv"
-              ? `☁️ Cloud sync enabled (Vercel KV${blob ? " + Blob" : ""})`
-              : "💾 Local dev storage — add KV/Blob env vars to enable cross-device sync"}
-          </span>
+        {localMode ? (
+          <span className="footer-storage">📁 This device only — data stays in this browser</span>
+        ) : (
+          storage && (
+            <span className="footer-storage">
+              {storage === "kv"
+                ? `☁️ Cloud sync enabled (Vercel KV${blob ? " + Blob" : ""})`
+                : "💾 Local dev storage — add KV/Blob env vars to enable cross-device sync"}
+            </span>
+          )
         )}
       </footer>
 
