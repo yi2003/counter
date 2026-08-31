@@ -825,6 +825,11 @@ textarea {
   padding: 8px 0 0;
 }
 
+.footer-storage {
+  display: block;
+  margin-top: 4px;
+}
+
 :focus-visible {
   outline: 2px solid var(--primary);
   outline-offset: 2px;

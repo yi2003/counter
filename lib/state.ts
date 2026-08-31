@@ -1,10 +1,11 @@
+import { blobEnabled } from "./blob";
 import { getStore } from "./store";
 import type { AppState, CounterSummary } from "./types";
 
 /** Home-screen summaries: every counter of ONE user + current used counts. */
 export async function listSummaries(
   userId: string,
-): Promise<{ counters: CounterSummary[]; storage: "kv" | "local" }> {
+): Promise<{ counters: CounterSummary[]; storage: "kv" | "local"; blob: boolean }> {
   const store = await getStore();
   const metas = await store.listMetas(userId);
   const counters = await Promise.all(
@@ -18,7 +19,7 @@ export async function listSummaries(
       used: await store.getUsed(userId, m.id),
     })),
   );
-  return { counters, storage: store.mode };
+  return { counters, storage: store.mode, blob: blobEnabled() };
 }
 
 /** Full state of one of the user's counters, or null when the id is unknown. */
@@ -32,7 +33,7 @@ export async function buildCounterState(
   if (!meta) return null;
   const used = await store.getUsed(userId, id);
   const history = await store.getHistory(userId, id);
-  return { project: meta, used, history, storage: store.mode };
+  return { project: meta, used, history, storage: store.mode, blob: blobEnabled() };
 }
 
 export function jsonError(message: string, status = 400): Response {

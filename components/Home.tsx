@@ -13,6 +13,7 @@ import { IconPlus } from "@/components/icons";
 export default function Home({ user }: { user: SessionUser }) {
   const [counters, setCounters] = useState<CounterSummary[] | null>(null);
   const [storage, setStorage] = useState<"kv" | "local" | null>(null);
+  const [blob, setBlob] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [showNew, setShowNew] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -22,11 +23,12 @@ export default function Home({ user }: { user: SessionUser }) {
   const load = useCallback(async () => {
     setLoadError(null);
     try {
-      const res = await api<{ counters: CounterSummary[]; storage: "kv" | "local" }>(
+      const res = await api<{ counters: CounterSummary[]; storage: "kv" | "local"; blob: boolean }>(
         "/api/counters",
       );
       setCounters(res.counters.filter((c) => !c.parentId)); // top-level only
       setStorage(res.storage);
+      setBlob(res.blob);
     } catch (e) {
       setLoadError(errMsg(e));
     }
@@ -108,6 +110,14 @@ export default function Home({ user }: { user: SessionUser }) {
         </div>
       )}
 
+      {storage === "kv" && !blob && (
+        <div className="banner banner-warning">
+          🖼️ Counters and history are persistent now, but <strong>images are not</strong> — no Blob
+          store is connected. Vercel dashboard → <strong>Storage → Create Database → Blob</strong>{" "}
+          → connect it to keep photo proof.
+        </div>
+      )}
+
       <section className="counter-grid">
         {counters.map((c) => (
           <CounterCard key={c.id} counter={c} />
@@ -122,6 +132,13 @@ export default function Home({ user }: { user: SessionUser }) {
         {counters.length === 0
           ? "Create your first counter to get started."
           : "Tip: open a counter to add sub-counters, notes and photo proof."}
+        {storage && (
+          <span className="footer-storage">
+            {storage === "kv"
+              ? `☁️ Cloud sync enabled (Vercel KV${blob ? " + Blob" : ""})`
+              : "💾 Local dev storage — add KV/Blob env vars to enable cross-device sync"}
+          </span>
+        )}
       </footer>
 
       {showNew && (

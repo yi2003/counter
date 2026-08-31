@@ -301,13 +301,34 @@ function createLocalStore(): CounterStore {
   };
 }
 
-async function createStore(): Promise<CounterStore> {
+/**
+ * Finds Redis REST credentials in the environment.
+ * Standard names first (KV_REST_API_URL / KV_REST_API_TOKEN); falls back to
+ * the prefixed names Vercel's Upstash integration injects per store, e.g.
+ * "cc_KV_REST_API_URL" + "cc_KV_REST_API_TOKEN".
+ */
+function kvCredentials(): { url: string; token: string } | null {
   const url = process.env.KV_REST_API_URL;
   const token = process.env.KV_REST_API_TOKEN;
-  if (url && token) {
+  if (url && token) return { url, token };
+
+  const keys = Object.keys(process.env).sort();
+  for (const key of keys) {
+    if (!key.endsWith("_KV_REST_API_URL")) continue;
+    const prefix = key.slice(0, -"_KV_REST_API_URL".length);
+    const pairUrl = process.env[key];
+    const pairToken = process.env[`${prefix}_KV_REST_API_TOKEN`];
+    if (pairUrl && pairToken) return { url: pairUrl, token: pairToken };
+  }
+  return null;
+}
+
+async function createStore(): Promise<CounterStore> {
+  const creds = kvCredentials();
+  if (creds) {
     try {
       const { createClient } = await import("@vercel/kv");
-      const kv = createClient({ url, token }) as unknown as KvClient;
+      const kv = createClient(creds) as unknown as KvClient;
       return createKvStore(kv);
     } catch (err) {
       console.warn("[store] Failed to init Vercel KV, falling back to local store:", err);

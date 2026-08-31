@@ -36,6 +36,7 @@ export interface AppState {
   used: number;
   history: CheckinRecord[]; // newest first
   storage: "kv" | "local";
+  blob: boolean; // whether Vercel Blob is connected (persistent images)
 }
 
 export interface SessionUser {

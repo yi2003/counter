@@ -206,7 +206,7 @@ export default function CounterDetail({ id, user }: { id: string; user: SessionU
     );
   }
 
-  const { project, used, history, storage } = state;
+  const { project, used, history, storage, blob } = state;
   const remaining = Math.max(0, project.total - used);
   const pct = project.total > 0 ? Math.round((used / project.total) * 100) : 0;
   const reached = used >= project.total;
@@ -254,6 +254,12 @@ export default function CounterDetail({ id, user }: { id: string; user: SessionU
         <div className="banner banner-danger">
           ⚠️ <strong>Data is not persistent here.</strong> Connect Vercel KV (dashboard → Storage →
           Upstash Redis) so history survives redeploys and syncs to your other devices.
+        </div>
+      )}
+
+      {storage === "kv" && !blob && (
+        <div className="banner banner-warning">
+          🖼️ Images are stored temporarily — connect Vercel Blob so photo proof survives redeploys.
         </div>
       )}
 
@@ -342,7 +348,7 @@ export default function CounterDetail({ id, user }: { id: string; user: SessionU
 
       <footer className="footer">
         {storage === "kv"
-          ? "☁️ Cloud sync enabled (Vercel KV + Blob)"
+          ? `☁️ Cloud sync enabled (Vercel KV${blob ? " + Blob" : ""})`
           : "💾 Local dev storage — add KV/Blob env vars to enable cross-device sync"}
       </footer>
 
