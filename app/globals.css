@@ -1012,6 +1012,12 @@ button.counter-card:hover,
   border: 1px solid #f0d8ad;
 }
 
+.banner-danger {
+  background: var(--danger-soft);
+  color: #8a2f2f;
+  border: 1px solid #f2c4c4;
+}
+
 /* login page */
 
 .login-wrap {

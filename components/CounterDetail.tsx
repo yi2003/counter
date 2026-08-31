@@ -250,6 +250,13 @@ export default function CounterDetail({ id, user }: { id: string; user: SessionU
         </div>
       )}
 
+      {storage === "local" && (
+        <div className="banner banner-danger">
+          ⚠️ <strong>Data is not persistent here.</strong> Connect Vercel KV (dashboard → Storage →
+          Upstash Redis) so history survives redeploys and syncs to your other devices.
+        </div>
+      )}
+
       <section className="card main-card">
         <ProgressRing used={used} total={project.total} bounce={bounce} />
 

@@ -12,6 +12,7 @@ import { IconPlus } from "@/components/icons";
 
 export default function Home({ user }: { user: SessionUser }) {
   const [counters, setCounters] = useState<CounterSummary[] | null>(null);
+  const [storage, setStorage] = useState<"kv" | "local" | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [showNew, setShowNew] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -21,8 +22,11 @@ export default function Home({ user }: { user: SessionUser }) {
   const load = useCallback(async () => {
     setLoadError(null);
     try {
-      const res = await api<{ counters: CounterSummary[] }>("/api/counters");
+      const res = await api<{ counters: CounterSummary[]; storage: "kv" | "local" }>(
+        "/api/counters",
+      );
       setCounters(res.counters.filter((c) => !c.parentId)); // top-level only
+      setStorage(res.storage);
     } catch (e) {
       setLoadError(errMsg(e));
     }
@@ -92,6 +96,15 @@ export default function Home({ user }: { user: SessionUser }) {
         <div className="banner banner-warning">
           🔒 Public mode — anyone with this link can view and edit. Configure Google sign-in to
           lock this app to your account.
+        </div>
+      )}
+
+      {storage === "local" && (
+        <div className="banner banner-danger">
+          ⚠️ <strong>Your data is not persistent.</strong> No database is connected, so everything
+          (including history) is wiped on every redeploy. Fix: Vercel dashboard → your project →{" "}
+          <strong>Storage → Create Database → Upstash Redis</strong> → connect it → redeploy. The
+          footer will switch to “☁️ Cloud sync enabled”.
         </div>
       )}
 
