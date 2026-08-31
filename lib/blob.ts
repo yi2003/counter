@@ -20,16 +20,24 @@ export function uploadDir(): string {
 
 /**
  * Finds the Blob read/write token in the environment.
- * Standard name first (BLOB_READ_WRITE_TOKEN); falls back to prefixed names
- * some Vercel storage integrations inject, e.g. "cc_BLOB_READ_WRITE_TOKEN".
+ * Order: standard name (BLOB_READ_WRITE_TOKEN), then prefixed names some
+ * Vercel storage integrations inject (e.g. "cc_BLOB_READ_WRITE_TOKEN"),
+ * then any variable whose VALUE is a Blob token — tokens always start with
+ * "vercel_blob_rw_", so the variable name does not matter.
  */
 export function blobToken(): string | undefined {
   const t = process.env.BLOB_READ_WRITE_TOKEN;
   if (t) return t;
-  for (const key of Object.keys(process.env).sort()) {
-    if (!key.endsWith("_BLOB_READ_WRITE_TOKEN")) continue;
+  const keys = Object.keys(process.env).sort();
+  for (const key of keys) {
+    if (key.endsWith("_BLOB_READ_WRITE_TOKEN")) {
+      const v = process.env[key];
+      if (v) return v;
+    }
+  }
+  for (const key of keys) {
     const v = process.env[key];
-    if (v) return v;
+    if (v && v.startsWith("vercel_blob_rw_")) return v;
   }
   return undefined;
 }
