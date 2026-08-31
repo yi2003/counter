@@ -1,0 +1,20 @@
+# dependencies
+node_modules/
+.npm-cache/
+
+# next.js build output
+.next/
+.next-verify/
+out/
+
+# local dev storage (used when KV/Blob env vars are absent)
+.data/
+
+# env files
+.env
+.env*.local
+
+# misc
+*.tsbuildinfo
+next-env.d.ts
+.DS_Store
