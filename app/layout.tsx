@@ -10,6 +10,7 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
+  viewportFit: "cover", // let content respect iPhone notches / home indicator
   themeColor: "#2b7be4",
 };
 

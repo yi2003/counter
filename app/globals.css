@@ -37,7 +37,16 @@ body {
     "Helvetica Neue", Arial, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
     sans-serif;
   -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
   line-height: 1.5;
+}
+
+button,
+a,
+input,
+textarea,
+select {
+  touch-action: manipulation; /* no double-tap-zoom delay on mobile */
 }
 
 button {
@@ -49,7 +58,7 @@ button {
 .container {
   max-width: 640px;
   margin: 0 auto;
-  padding: 20px 16px 56px;
+  padding: 20px 16px max(56px, env(safe-area-inset-bottom));
 }
 
 .center-screen {
@@ -592,7 +601,7 @@ textarea {
   border-radius: 10px;
   background: var(--card);
   color: var(--text);
-  font-size: 15px;
+  font-size: 16px; /* ≥16px so iOS Safari doesn't zoom on focus */
   font-family: inherit;
   padding: 10px 12px;
   outline: none;
@@ -1130,6 +1139,102 @@ button.counter-card:hover,
 /* ------------------------------ responsive ------------------------------ */
 
 @media (max-width: 520px) {
+  .container {
+    padding: 14px 12px max(48px, env(safe-area-inset-bottom));
+  }
+
+  /* Header: title row on top, account actions on their own full-width row */
+  .topbar {
+    flex-wrap: wrap;
+    row-gap: 10px;
+    padding-bottom: 12px;
+  }
+
+  .topbar .topbar-left {
+    flex: 1 1 auto;
+  }
+
+  .topbar .topbar-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .topbar-left .app-title {
+    font-size: 20px;
+  }
+
+  .topbar-left .app-subtitle {
+    font-size: 12px;
+  }
+
+  .user-chip {
+    padding: 5px 10px;
+  }
+
+  .user-chip .user-name {
+    max-width: 96px;
+  }
+
+  /* Cards & density */
+  .card {
+    padding: 16px 14px;
+    border-radius: 14px;
+  }
+
+  .cover {
+    margin-bottom: 14px;
+  }
+
+  .cover img {
+    height: 140px;
+  }
+
+  .ring-wrap {
+    width: 176px;
+    height: 176px;
+    margin: 4px auto 12px;
+  }
+
+  .ring-count {
+    font-size: 36px;
+  }
+
+  .ring-total {
+    font-size: 15px;
+    margin-left: 4px;
+  }
+
+  .ring-pct {
+    font-size: 13px;
+  }
+
+  .stats {
+    gap: 6px;
+    margin-bottom: 14px;
+  }
+
+  .stat {
+    padding: 8px 4px;
+    border-radius: 10px;
+  }
+
+  .stat-value {
+    font-size: 17px;
+  }
+
+  .stat-label {
+    font-size: 10.5px;
+  }
+
+  .actions {
+    gap: 8px;
+  }
+
+  .btn {
+    font-size: 15px;
+    padding: 0 14px;
+  }
+
   .actions {
     grid-template-columns: 1fr 1fr;
   }
@@ -1137,23 +1242,146 @@ button.counter-card:hover,
   .actions .btn-checkin {
     grid-column: 1 / -1;
     order: -1;
-    min-height: 54px;
+    min-height: 52px;
+    font-size: 16px;
   }
 
+  .section-title {
+    font-size: 16px;
+    margin-bottom: 12px;
+  }
+
+  .counter-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+
+  .counter-card {
+    padding: 14px 10px;
+  }
+
+  .mini-ring {
+    width: 68px;
+    height: 68px;
+  }
+
+  .counter-name {
+    font-size: 14px;
+  }
+
+  .counter-nums {
+    font-size: 12px;
+  }
+
+  .history-item {
+    padding: 10px 12px;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+
+  .history-list {
+    padding-left: 12px;
+  }
+
+  .history-item::before {
+    left: -12px;
+  }
+
+  .thumb-btn {
+    flex: 0 0 56px;
+    width: 56px;
+    height: 56px;
+  }
+
+  .history-note {
+    font-size: 13.5px;
+  }
+
+  .history-fulltime {
+    display: none; /* the relative time + title tooltip is enough on mobile */
+  }
+
+  /* Modals become bottom sheets — feels native on phones */
+  .overlay {
+    padding: 0;
+    align-items: flex-end;
+  }
+
+  @keyframes sheetIn {
+    from {
+      transform: translateY(28px);
+      opacity: 0.6;
+    }
+    to {
+      transform: translateY(0);
+      opacity: 1;
+    }
+  }
+
+  .modal {
+    max-width: 100%;
+    max-height: 92vh;
+    border-radius: 16px 16px 0 0;
+    padding: 16px 16px calc(16px + env(safe-area-inset-bottom));
+    animation: sheetIn 0.22s ease;
+  }
+
+  .modal-narrow {
+    max-width: 100%;
+  }
+
+  /* Toasts float above the sheet, slide up from the bottom edge */
+  @keyframes toastInMobile {
+    from {
+      transform: translateY(14px);
+      opacity: 0;
+    }
+    to {
+      transform: translateY(0);
+      opacity: 1;
+    }
+  }
+
+  .toast-host {
+    top: auto;
+    bottom: calc(18px + env(safe-area-inset-bottom));
+    z-index: 120;
+  }
+
+  .toast {
+    animation: toastInMobile 0.2s ease;
+  }
+
+  .lightbox img {
+    max-width: 96vw;
+    max-height: 78vh;
+  }
+
+  .login-card {
+    padding: 22px 16px;
+  }
+
+  .login-wrap {
+    min-height: 78vh;
+  }
+}
+
+/* Extra-small phones */
+@media (max-width: 360px) {
   .ring-wrap {
-    width: 190px;
-    height: 190px;
+    width: 158px;
+    height: 158px;
   }
 
   .ring-count {
-    font-size: 38px;
+    font-size: 32px;
   }
 
-  .stats {
-    flex-wrap: wrap;
+  .counter-grid {
+    grid-template-columns: repeat(2, 1fr);
   }
 
-  .stat {
-    min-width: 96px;
+  .user-chip .user-name {
+    max-width: 72px;
   }
 }
