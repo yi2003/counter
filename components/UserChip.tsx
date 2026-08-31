@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import type { SessionUser } from "@/lib/types";
-import { clearLocalModeFlag, isLocalMode } from "@/lib/localMode";
+import { clearLocalModeFlag, disableLocalMode, isLocalMode } from "@/lib/localMode";
 
 /** Small account chip shown in the top bar (avatar + name + sign out). */
 export default function UserChip({ user }: { user: SessionUser }) {
