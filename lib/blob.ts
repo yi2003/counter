@@ -83,17 +83,30 @@ export function blobConnected(): boolean {
   return Boolean(blobToken() || platformStoreConnected());
 }
 
+function cleanStoreId(): string | undefined {
+  const raw = process.env.BLOB_STORE_ID?.trim().replace(/^["']+|["']+$/g, "");
+  return raw || undefined;
+}
+
 function platformStoreConnected(): boolean {
-  const storeId = process.env.BLOB_STORE_ID?.trim();
+  const storeId = cleanStoreId();
   if (!storeId) return false;
   // Platform (OIDC-based) credentials only exist on Vercel's runtime.
   return Boolean(process.env.VERCEL || process.env.VERCEL_OIDC_TOKEN);
 }
 
-/** Options for put/del/get depending on which credential mode is active. */
-export function credOptions(): { token?: string } {
+/**
+ * Credential options for put/get/del. Prefers a static read/write token;
+ * otherwise passes the cleaned BLOB_STORE_ID so the SDK authenticates via
+ * the platform (OIDC) connection. Cleaning matters: a value pasted with
+ * surrounding quotes would otherwise make the SDK look up a store whose id
+ * literally starts with a quote ("This store does not exist").
+ */
+export function credOptions(): { token?: string; storeId?: string } {
   const t = blobToken();
-  return t ? { token: t } : {};
+  if (t) return { token: t };
+  const sid = platformStoreConnected() ? cleanStoreId() : undefined;
+  return sid ? { storeId: sid } : {};
 }
 
 let loggedStatus: string | null | undefined;

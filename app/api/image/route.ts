@@ -1,5 +1,5 @@
 import { get as getBlob } from "@vercel/blob";
-import { blobToken } from "@/lib/blob";
+import { credOptions } from "@/lib/blob";
 import { requireUser } from "@/lib/auth";
 import { jsonError, withErrors } from "@/lib/state";
 
@@ -28,7 +28,7 @@ export async function GET(req: Request) {
     try {
       const res = await getBlob(u, {
         access: "private",
-        token: blobToken(),
+        ...credOptions(),
       });
       if (!res || res.statusCode !== 200 || !res.stream) {
         return jsonError("Not found", 404);
