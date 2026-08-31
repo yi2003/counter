@@ -24,22 +24,58 @@ export function uploadDir(): string {
  * Vercel storage integrations inject (e.g. "cc_BLOB_READ_WRITE_TOKEN"),
  * then any variable whose VALUE is a Blob token — tokens always start with
  * "vercel_blob_rw_", so the variable name does not matter.
+ * Values are trimmed and stripped of surrounding quotes, so pasting the
+ * .env-style line (TOKEN="vercel_blob_rw_...") also works.
  */
+let loggedSource: string | null | undefined;
+
 export function blobToken(): string | undefined {
-  const t = process.env.BLOB_READ_WRITE_TOKEN;
-  if (t) return t;
+  const clean = (v: string | undefined): string | undefined => {
+    const t = v?.trim().replace(/^["']+|["']+$/g, "");
+    return t && t.startsWith("vercel_blob_rw_") ? t : undefined;
+  };
+
   const keys = Object.keys(process.env).sort();
-  for (const key of keys) {
-    if (key.endsWith("_BLOB_READ_WRITE_TOKEN")) {
-      const v = process.env[key];
-      if (v) return v;
+  let found: { key: string; value: string } | undefined;
+
+  const exact = clean(process.env.BLOB_READ_WRITE_TOKEN);
+  if (exact) found = { key: "BLOB_READ_WRITE_TOKEN", value: exact };
+
+  if (!found) {
+    for (const key of keys) {
+      if (!key.endsWith("_BLOB_READ_WRITE_TOKEN")) continue;
+      const v = clean(process.env[key]);
+      if (v) {
+        found = { key, value: v };
+        break;
+      }
     }
   }
-  for (const key of keys) {
-    const v = process.env[key];
-    if (v && v.startsWith("vercel_blob_rw_")) return v;
+
+  if (!found) {
+    for (const key of keys) {
+      if (key === "BLOB_READ_WRITE_TOKEN") continue;
+      const v = clean(process.env[key]);
+      if (v) {
+        found = { key, value: v };
+        break;
+      }
+    }
   }
-  return undefined;
+
+  if (loggedSource === undefined) {
+    loggedSource = found?.key ?? null;
+    if (loggedSource) {
+      console.log(`[blob] using Blob token from env var: ${loggedSource}`);
+    } else {
+      console.warn(
+        "[blob] no Blob token found in environment — images will use ephemeral local storage. " +
+          "Set BLOB_READ_WRITE_TOKEN in Vercel (Settings → Environment Variables) and redeploy.",
+      );
+    }
+  }
+
+  return found?.value;
 }
 
 export function blobEnabled(): boolean {

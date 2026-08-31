@@ -305,19 +305,25 @@ function createLocalStore(): CounterStore {
  * Finds Redis REST credentials in the environment.
  * Standard names first (KV_REST_API_URL / KV_REST_API_TOKEN); falls back to
  * the prefixed names Vercel's Upstash integration injects per store, e.g.
- * "cc_KV_REST_API_URL" + "cc_KV_REST_API_TOKEN".
+ * "cc_KV_REST_API_URL" + "cc_KV_REST_API_TOKEN". Values are trimmed and
+ * stripped of surrounding quotes so .env-style pastes also work.
  */
+function cleanEnvValue(v: string | undefined): string | undefined {
+  const t = v?.trim().replace(/^["']+|["']+$/g, "");
+  return t ? t : undefined;
+}
+
 function kvCredentials(): { url: string; token: string } | null {
-  const url = process.env.KV_REST_API_URL;
-  const token = process.env.KV_REST_API_TOKEN;
+  const url = cleanEnvValue(process.env.KV_REST_API_URL);
+  const token = cleanEnvValue(process.env.KV_REST_API_TOKEN);
   if (url && token) return { url, token };
 
   const keys = Object.keys(process.env).sort();
   for (const key of keys) {
     if (!key.endsWith("_KV_REST_API_URL")) continue;
     const prefix = key.slice(0, -"_KV_REST_API_URL".length);
-    const pairUrl = process.env[key];
-    const pairToken = process.env[`${prefix}_KV_REST_API_TOKEN`];
+    const pairUrl = cleanEnvValue(process.env[key]);
+    const pairToken = cleanEnvValue(process.env[`${prefix}_KV_REST_API_TOKEN`]);
     if (pairUrl && pairToken) return { url: pairUrl, token: pairToken };
   }
   return null;
