@@ -37,9 +37,22 @@ export async function POST(req: Request) {
     }
 
     const id = `${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
-    const url = await uploadImage(file, { id });
-    const thumbUrl =
-      thumb instanceof File ? await uploadImage(thumb, { id, prefix: "thumb-" }) : undefined;
+    let url: string;
+    let thumbUrl: string | undefined;
+    try {
+      url = await uploadImage(file, { id });
+      thumbUrl = thumb instanceof File ? await uploadImage(thumb, { id, prefix: "thumb-" }) : undefined;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error("[upload] Blob upload failed:", err);
+      if (/does not exist/i.test(msg)) {
+        return jsonError(
+          "Blob store not linked to this project. Copy a fresh BLOB_READ_WRITE_TOKEN from the store page into Settings → Environment Variables, redeploy, and try again.",
+          502,
+        );
+      }
+      throw err;
+    }
     return Response.json(thumbUrl ? { url, thumbUrl } : { url });
   });
 }
