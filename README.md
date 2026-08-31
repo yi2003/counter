@@ -50,7 +50,8 @@ Works out of the box **without any cloud config**: when `KV_REST_API_URL` / `BLO
 > - Create the Blob and KV stores **before** deployment so the tokens/URLs exist.
 > - `@vercel/kv` also works unchanged with an Upstash Redis integration (same `KV_REST_API_URL` / `KV_REST_API_TOKEN` variable names).
 > - Hobby free tiers: Blob 10 GB storage + 1 GB/month bandwidth; KV 256 MB + 30,000 requests/month — plenty for personal use.
-> - Deploying **without** the env vars still works, but data stays per-instance local and won't sync (the footer will tell you).
+> - Deploying **without** the env vars still works — but on Vercel the fallback storage is **ephemeral** (read-only project dir → `/tmp`, per instance), so data won't persist or sync. Fine for a first look; add the KV/Blob vars for real use. The footer badge tells you which mode is active.
+> - The fallback data directory can be overridden with the `DATA_DIR` env var.
 
 ## 🔌 API
 
