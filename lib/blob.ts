@@ -5,7 +5,8 @@ import { baseDataDir } from "./paths";
 
 /**
  * Image storage:
- * - Production: Vercel Blob (requires BLOB_READ_WRITE_TOKEN).
+ * - Production: Vercel Blob as PRIVATE objects (requires BLOB_READ_WRITE_TOKEN).
+ *   Reads go through /api/image (authenticated proxy) — raw URLs are never public.
  * - Dev fallback: local files under <dataDir>/uploads served via /api/uploads/[file].
  *   <dataDir> is the project's .data/ locally, or ephemeral /tmp on serverless.
  */
@@ -32,7 +33,7 @@ export async function uploadImage(
   if (blobEnabled()) {
     const { put } = await import("@vercel/blob");
     const blob = await put(`checkins/${name}`, file, {
-      access: "public",
+      access: "private",
       addRandomSuffix: false,
       token: process.env.BLOB_READ_WRITE_TOKEN,
     });

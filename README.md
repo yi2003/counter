@@ -10,6 +10,7 @@ A universal, self-hosted check-in counter: customize the project name and total 
 - **Data display** — used / total, remaining count, progress %, and a circular SVG progress ring whose color shifts Blue → Orange → Red as usage approaches the limit (`<70%` blue, `70–90%` orange, `>90%` red).
 - **Check-in history** — newest-first timeline; every record shows its timestamp, optional note, and an image thumbnail that opens a full-screen preview.
 - **Image upload** — take a photo or pick from the gallery; client-side auto-compression (max width 800 px, JPEG quality 60 %) before upload. Each check-in photo is uploaded as **two files**: a tiny thumbnail (~240 px) for the history list plus the compressed 800 px view for the full-size preview, keeping the timeline light on bandwidth.
+- **Private images** — photos are stored in Vercel Blob as **private** objects and served only through the authenticated `/api/image` proxy. Raw blob URLs are never publicly accessible.
 - **Cross-device sync** — counter data in **Vercel KV (Redis)**, images in **Vercel Blob**.
 - **Mobile-first UX** — ≥44 pt touch targets, press-feedback animations, ring bounce on check-in, toast notifications, loading states, fully responsive.
 
@@ -81,6 +82,7 @@ Works out of the box **without any cloud config**: when `KV_REST_API_URL` / `BLO
 | `/api/counters/[id]/reset` | POST | Count → 0, clear history (cleans stored images, best effort) |
 | `/api/upload` | POST | `multipart/form-data` (`file` + optional `thumb`) → `{ url, thumbUrl }` |
 | `/api/uploads/[file]` | GET | Serves local dev uploads only (404 when Blob is enabled) |
+| `/api/image?u=...` | GET | Authenticated proxy for private Blob images (signed-in users only) |
 
 ## 🗄️ Data model (Vercel KV)
 
