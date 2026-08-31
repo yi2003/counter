@@ -1,6 +1,6 @@
 import fs from "fs/promises";
 import path from "path";
-import { blobEnabled, uploadDir } from "@/lib/blob";
+import { blobConnected, uploadDir } from "@/lib/blob";
 
 /**
  * Dev-only route that serves locally stored uploads (<dataDir>/uploads).
@@ -24,7 +24,7 @@ export async function GET(
   _req: Request,
   { params }: { params: Promise<{ file: string }> },
 ) {
-  if (blobEnabled()) return new Response("Not found", { status: 404 });
+  if (blobConnected()) return new Response("Not found", { status: 404 });
 
   const { file } = await params;
   const safe = path.basename(file);

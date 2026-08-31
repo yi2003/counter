@@ -27,8 +27,6 @@ export function uploadDir(): string {
  * Values are trimmed and stripped of surrounding quotes, so pasting the
  * .env-style line (TOKEN="vercel_blob_rw_...") also works.
  */
-let loggedSource: string | null | undefined;
-
 export function blobToken(): string | undefined {
   const clean = (v: string | undefined): string | undefined => {
     const t = v?.trim().replace(/^["']+|["']+$/g, "");
@@ -63,23 +61,59 @@ export function blobToken(): string | undefined {
     }
   }
 
-  if (loggedSource === undefined) {
-    loggedSource = found?.key ?? null;
-    if (loggedSource) {
-      console.log(`[blob] using Blob token from env var: ${loggedSource}`);
-    } else {
-      console.warn(
-        "[blob] no Blob token found in environment — images will use ephemeral local storage. " +
-          "Set BLOB_READ_WRITE_TOKEN in Vercel (Settings → Environment Variables) and redeploy.",
-      );
-    }
-  }
-
+  blobTokenSource = found?.key;
   return found?.value;
 }
 
+let blobTokenSource: string | undefined;
+
 export function blobEnabled(): boolean {
   return Boolean(blobToken());
+}
+
+/**
+ * True when a Blob store is reachable at all: either a static read/write
+ * token exists, or the project is linked to a store via the newer
+ * BLOB_STORE_ID connection model — in that case the SDK authenticates with
+ * platform credentials on Vercel (no static token; same as the official
+ * docs examples that pass no token at all).
+ */
+export function blobConnected(): boolean {
+  logBlobStatus();
+  return Boolean(blobToken() || platformStoreConnected());
+}
+
+function platformStoreConnected(): boolean {
+  const storeId = process.env.BLOB_STORE_ID?.trim();
+  if (!storeId) return false;
+  // Platform (OIDC-based) credentials only exist on Vercel's runtime.
+  return Boolean(process.env.VERCEL || process.env.VERCEL_OIDC_TOKEN);
+}
+
+/** Options for put/del/get depending on which credential mode is active. */
+export function credOptions(): { token?: string } {
+  const t = blobToken();
+  return t ? { token: t } : {};
+}
+
+let loggedStatus: string | null | undefined;
+
+/** Logs (once) which Blob credential mode the environment provides. */
+export function logBlobStatus(): void {
+  if (loggedStatus !== undefined) return;
+  if (blobToken()) {
+    loggedStatus = "static-token";
+    console.log(`[blob] using Blob token from env var: ${blobTokenSource}`);
+  } else if (platformStoreConnected()) {
+    loggedStatus = "connected-store";
+    console.log("[blob] using connected store (BLOB_STORE_ID) with platform credentials");
+  } else {
+    loggedStatus = "none";
+    console.warn(
+      "[blob] no Blob credentials found — images will use ephemeral local storage. " +
+        "Connect a Blob store (Storage tab) or set BLOB_READ_WRITE_TOKEN, then redeploy.",
+    );
+  }
 }
 
 export async function uploadImage(
@@ -90,12 +124,12 @@ export async function uploadImage(
   const id = opts.id ?? `${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
   const name = `${opts.prefix ?? ""}${id}${extFor(file)}`;
 
-  if (blobEnabled()) {
+  if (blobConnected()) {
     const { put } = await import("@vercel/blob");
     const blob = await put(`checkins/${name}`, file, {
       access: "private",
       addRandomSuffix: false,
-      token: blobToken(),
+      ...credOptions(),
     });
     return blob.url;
   }
@@ -112,9 +146,9 @@ export async function deleteImage(url: string | null | undefined): Promise<void>
   try {
     if (url.startsWith("/api/uploads/")) {
       await fs.unlink(path.join(UPLOAD_DIR, path.basename(url)));
-    } else if (blobEnabled()) {
+    } else if (blobConnected()) {
       const { del } = await import("@vercel/blob");
-      await del(url, { token: blobToken() });
+      await del(url, credOptions());
     }
   } catch (err) {
     console.warn("[blob] deleteImage failed (ignored):", err);

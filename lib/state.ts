@@ -1,4 +1,4 @@
-import { blobEnabled } from "./blob";
+import { blobConnected } from "./blob";
 import { getStore } from "./store";
 import type { AppState, CheckinRecord, CounterMeta, CounterSummary } from "./types";
 
@@ -44,7 +44,7 @@ export async function listSummaries(
       used: await store.getUsed(userId, m.id),
     })),
   );
-  return { counters, storage: store.mode, blob: blobEnabled() };
+  return { counters, storage: store.mode, blob: blobConnected() };
 }
 
 /** Full state of one of the user's counters, or null when the id is unknown. */
@@ -58,7 +58,7 @@ export async function buildCounterState(
   if (!meta) return null;
   const used = await store.getUsed(userId, id);
   const history = withClientRecordImages(await store.getHistory(userId, id));
-  return { project: withClientImages(meta), used, history, storage: store.mode, blob: blobEnabled() };
+  return { project: withClientImages(meta), used, history, storage: store.mode, blob: blobConnected() };
 }
 
 export function jsonError(message: string, status = 400): Response {
