@@ -5,29 +5,34 @@ import type { CheckinRecord, CounterMeta } from "./types";
 import { DEFAULT_PROJECT } from "./types";
 
 /**
- * Storage abstraction for MULTIPLE counters.
- * - "kv":    Vercel KV (Redis) — cloud sync across devices (production).
- *            Keys: "counters" (JSON array of CounterMeta), "used:<id>", "history:<id>".
- * - "local": JSON file under .data/ — dev fallback when KV env vars are absent.
+ * Storage abstraction: MULTIPLE users, each with MULTIPLE counters.
+ * Every method is scoped by `userId` (Google `sub`, or "guest" when auth is off).
  *
- * Legacy single-counter data (old keys "project" / "used" / "history") is
- * migrated once, automatically, into a counter with id "default".
+ * - "kv":    Vercel KV (Redis). Keys: "counters:<uid>", "used:<uid>:<cid>",
+ *            "history:<uid>:<cid>".
+ * - "local": JSON file (<dataDir>/store.json), shape:
+ *            { users: { [uid]: { metas, counters } }, legacy? }
+ *            Legacy v1/v2 data (pre-auth) is claimed by the first scope that
+ *            touches it, so existing local/dev data lands under that account.
+ *
+ * NOTE: pre-auth global KV keys ("counters"/"used:*"/"history:*") are ignored;
+ * each account starts fresh (or claims local legacy data in dev).
  */
 
 export interface CounterStore {
   mode: "kv" | "local";
-  listMetas(): Promise<CounterMeta[]>;
-  saveMeta(meta: CounterMeta): Promise<void>;
-  getUsed(id: string): Promise<number>;
-  setUsed(id: string, n: number): Promise<void>;
-  incrUsed(id: string): Promise<number>;
-  decrUsed(id: string): Promise<number>;
-  pushHistory(id: string, r: CheckinRecord): Promise<void>;
-  popHistory(id: string): Promise<CheckinRecord | null>;
-  getHistory(id: string): Promise<CheckinRecord[]>;
-  clearHistory(id: string): Promise<void>;
+  listMetas(userId: string): Promise<CounterMeta[]>;
+  saveMeta(userId: string, meta: CounterMeta): Promise<void>;
+  getUsed(userId: string, id: string): Promise<number>;
+  setUsed(userId: string, id: string, n: number): Promise<void>;
+  incrUsed(userId: string, id: string): Promise<number>;
+  decrUsed(userId: string, id: string): Promise<number>;
+  pushHistory(userId: string, id: string, r: CheckinRecord): Promise<void>;
+  popHistory(userId: string, id: string): Promise<CheckinRecord | null>;
+  getHistory(userId: string, id: string): Promise<CheckinRecord[]>;
+  clearHistory(userId: string, id: string): Promise<void>;
   /** Deletes the counter's meta entry plus its used/history data. */
-  destroyCounter(id: string): Promise<void>;
+  destroyCounter(userId: string, id: string): Promise<void>;
 }
 
 let storePromise: Promise<CounterStore> | null = null;
@@ -41,11 +46,15 @@ export function newCounterId(): string {
   return `c${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 }
 
+function seedMetas(): CounterMeta[] {
+  return [{ ...DEFAULT_PROJECT, id: "default", createdAt: new Date().toISOString() }];
+}
+
 /* ------------------------------- KV store -------------------------------- */
 
-const METAS_KEY = "counters";
-const usedKey = (id: string) => `used:${id}`;
-const historyKey = (id: string) => `history:${id}`;
+const metasKey = (uid: string) => `counters:${uid}`;
+const usedKey = (uid: string, cid: string) => `used:${uid}:${cid}`;
+const historyKey = (uid: string, cid: string) => `history:${uid}:${cid}`;
 
 type KvClient = {
   get<T = unknown>(key: string): Promise<T | null>;
@@ -53,81 +62,62 @@ type KvClient = {
   incr(key: string): Promise<number>;
   decr(key: string): Promise<number>;
   lpush(key: string, ...values: unknown[]): Promise<number>;
-  rpush(key: string, ...values: unknown[]): Promise<number>;
   lpop<T = unknown>(key: string): Promise<T | null>;
   lrange<T = unknown>(key: string, start: number, stop: number): Promise<T[]>;
   del(...keys: string[]): Promise<number>;
   exists(key: string): Promise<number | boolean>;
 };
 
-async function migrateKv(kv: KvClient): Promise<void> {
-  if (await kv.exists(METAS_KEY)) return;
-
-  const legacyProject = await kv.get<ProjectConfigLike>("project");
-  const now = new Date().toISOString();
-  if (legacyProject) {
-    // Move legacy single-counter data into counter id "default".
-    const meta: CounterMeta = { ...legacyProject, id: "default", createdAt: now };
-    const legacyUsed = await kv.get<number>("used");
-    const legacyHistory = await kv.lrange<CheckinRecord>("history", 0, -1);
-    await kv.set(METAS_KEY, [meta]);
-    await kv.set(usedKey("default"), typeof legacyUsed === "number" ? legacyUsed : 0);
-    // legacyHistory is newest-first; rpush oldest-first to keep that order.
-    for (let i = legacyHistory.length - 1; i >= 0; i--) {
-      await kv.rpush(historyKey("default"), legacyHistory[i]);
-    }
-    await kv.del("project", "used", "history").catch(() => {});
-  } else {
-    // Fresh store: seed one default counter.
-    await kv.set(METAS_KEY, [{ ...DEFAULT_PROJECT, id: "default", createdAt: now }]);
-  }
-}
-
-type ProjectConfigLike = { name: string; total: number; coverImage: string | null };
-
 function createKvStore(kv: KvClient): CounterStore {
+  // Lazily seed a fresh scope for a first-time user.
+  const ensureScope = async (uid: string) => {
+    if (!(await kv.exists(metasKey(uid)))) {
+      await kv.set(metasKey(uid), seedMetas());
+    }
+  };
+
   return {
     mode: "kv",
-    async listMetas() {
-      await migrateKv(kv);
-      return (await kv.get<CounterMeta[]>(METAS_KEY)) ?? [];
+    async listMetas(uid) {
+      await ensureScope(uid);
+      return (await kv.get<CounterMeta[]>(metasKey(uid))) ?? [];
     },
-    async saveMeta(meta) {
-      const metas = (await kv.get<CounterMeta[]>(METAS_KEY)) ?? [];
+    async saveMeta(uid, meta) {
+      const metas = (await kv.get<CounterMeta[]>(metasKey(uid))) ?? [];
       const i = metas.findIndex((m) => m.id === meta.id);
       if (i >= 0) metas[i] = meta;
       else metas.push(meta);
-      await kv.set(METAS_KEY, metas);
+      await kv.set(metasKey(uid), metas);
     },
-    async getUsed(id) {
-      const v = await kv.get<number>(usedKey(id));
+    async getUsed(uid, cid) {
+      const v = await kv.get<number>(usedKey(uid, cid));
       return typeof v === "number" ? v : 0;
     },
-    async setUsed(id, n) {
-      await kv.set(usedKey(id), n);
+    async setUsed(uid, cid, n) {
+      await kv.set(usedKey(uid, cid), n);
     },
-    async incrUsed(id) {
-      return await kv.incr(usedKey(id));
+    async incrUsed(uid, cid) {
+      return await kv.incr(usedKey(uid, cid));
     },
-    async decrUsed(id) {
-      return await kv.decr(usedKey(id));
+    async decrUsed(uid, cid) {
+      return await kv.decr(usedKey(uid, cid));
     },
-    async pushHistory(id, r) {
-      await kv.lpush(historyKey(id), r);
+    async pushHistory(uid, cid, r) {
+      await kv.lpush(historyKey(uid, cid), r);
     },
-    async popHistory(id) {
-      return (await kv.lpop<CheckinRecord>(historyKey(id))) ?? null;
+    async popHistory(uid, cid) {
+      return (await kv.lpop<CheckinRecord>(historyKey(uid, cid))) ?? null;
     },
-    async getHistory(id) {
-      return await kv.lrange<CheckinRecord>(historyKey(id), 0, -1);
+    async getHistory(uid, cid) {
+      return await kv.lrange<CheckinRecord>(historyKey(uid, cid), 0, -1);
     },
-    async clearHistory(id) {
-      await kv.del(historyKey(id));
+    async clearHistory(uid, cid) {
+      await kv.del(historyKey(uid, cid));
     },
-    async destroyCounter(id) {
-      const metas = (await kv.get<CounterMeta[]>(METAS_KEY)) ?? [];
-      await kv.set(METAS_KEY, metas.filter((m) => m.id !== id));
-      await kv.del(usedKey(id), historyKey(id));
+    async destroyCounter(uid, cid) {
+      const metas = (await kv.get<CounterMeta[]>(metasKey(uid))) ?? [];
+      await kv.set(metasKey(uid), metas.filter((m) => m.id !== cid));
+      await kv.del(usedKey(uid, cid), historyKey(uid, cid));
     },
   };
 }
@@ -139,47 +129,52 @@ interface LocalCounter {
   history: CheckinRecord[];
 }
 
-interface LocalData {
+interface LocalScope {
   metas: CounterMeta[];
   counters: Record<string, LocalCounter>;
+}
+
+interface LocalData {
+  users: Record<string, LocalScope>;
+  /** Pre-auth v1/v2 data, claimed by the first user scope that accesses it. */
+  legacy: LocalScope | null;
 }
 
 const DATA_DIR = baseDataDir();
 const DATA_FILE = path.join(DATA_DIR, "store.json");
 
-function seedLocal(): LocalData {
-  const meta: CounterMeta = { ...DEFAULT_PROJECT, id: "default", createdAt: new Date().toISOString() };
-  return { metas: [meta], counters: { default: { used: 0, history: [] } } };
-}
-
 function readLocal(): LocalData {
   try {
     const raw = JSON.parse(fs.readFileSync(DATA_FILE, "utf8")) as Partial<LocalData> & {
-      project?: ProjectConfigLike;
+      project?: { name: string; total: number; coverImage: string | null };
       used?: number;
       history?: CheckinRecord[];
+      metas?: CounterMeta[];
+      counters?: Record<string, LocalCounter>;
     };
-    if (Array.isArray(raw.metas) && raw.counters) {
-      return { metas: raw.metas, counters: raw.counters };
+    if (raw && raw.users) {
+      return { users: raw.users, legacy: raw.legacy ?? null };
     }
-    // Migrate legacy single-counter file (keys: project / used / history).
-    const data: LocalData =
-      raw.project
-        ? {
-            metas: [{ ...raw.project, id: "default", createdAt: new Date().toISOString() }],
-            counters: {
-              default: {
-                used: typeof raw.used === "number" ? raw.used : 0,
-                history: Array.isArray(raw.history) ? raw.history : [],
-              },
-            },
-          }
-        : seedLocal();
+    // Older single-user formats → kept as "legacy", claimed on first access.
+    let legacy: LocalScope | null = null;
+    if (Array.isArray(raw.metas) && raw.counters) {
+      legacy = { metas: raw.metas, counters: raw.counters };
+    } else if (raw.project) {
+      legacy = {
+        metas: [{ ...raw.project, id: "default", createdAt: new Date().toISOString() }],
+        counters: {
+          default: {
+            used: typeof raw.used === "number" ? raw.used : 0,
+            history: Array.isArray(raw.history) ? raw.history : [],
+          },
+        },
+      };
+    }
+    const data: LocalData = { users: {}, legacy };
     writeLocal(data);
     return data;
   } catch {
-    // Fresh (or unreadable) file — seed one default counter.
-    const data = seedLocal();
+    const data: LocalData = { users: {}, legacy: null };
     writeLocal(data);
     return data;
   }
@@ -188,6 +183,22 @@ function readLocal(): LocalData {
 function writeLocal(d: LocalData): void {
   fs.mkdirSync(DATA_DIR, { recursive: true });
   fs.writeFileSync(DATA_FILE, JSON.stringify(d, null, 2));
+}
+
+/** Gets (creating on demand) a user's scope; claims legacy data if present. */
+function scopeOf(d: LocalData, uid: string): LocalScope {
+  if (!d.users[uid]) {
+    if (d.legacy) {
+      d.users[uid] = d.legacy;
+      d.legacy = null;
+    } else {
+      d.users[uid] = {
+        metas: seedMetas(),
+        counters: { default: { used: 0, history: [] } },
+      };
+    }
+  }
+  return d.users[uid];
 }
 
 // Serialize mutations to avoid read-modify-write races within one process.
@@ -201,83 +212,89 @@ function serialized<T>(fn: () => Promise<T> | T): Promise<T> {
 function createLocalStore(): CounterStore {
   return {
     mode: "local",
-    async listMetas() {
-      return readLocal().metas;
+    async listMetas(uid) {
+      const d = readLocal();
+      return scopeOf(d, uid).metas; // may claim legacy / seed (sync write)
     },
-    async saveMeta(meta) {
+    async saveMeta(uid, meta) {
       await serialized(() => {
         const d = readLocal();
-        const i = d.metas.findIndex((m) => m.id === meta.id);
-        if (i >= 0) d.metas[i] = meta;
-        else d.metas.push(meta);
-        if (!d.counters[meta.id]) d.counters[meta.id] = { used: 0, history: [] };
+        const s = scopeOf(d, uid);
+        const i = s.metas.findIndex((m) => m.id === meta.id);
+        if (i >= 0) s.metas[i] = meta;
+        else s.metas.push(meta);
+        if (!s.counters[meta.id]) s.counters[meta.id] = { used: 0, history: [] };
         writeLocal(d);
       });
     },
-    async getUsed(id) {
-      return readLocal().counters[id]?.used ?? 0;
+    async getUsed(uid, cid) {
+      return readLocal().users[uid]?.counters[cid]?.used ?? 0;
     },
-    async setUsed(id, n) {
+    async setUsed(uid, cid, n) {
       await serialized(() => {
         const d = readLocal();
-        const c = (d.counters[id] ??= { used: 0, history: [] });
-        c.used = n;
+        const s = scopeOf(d, uid);
+        (s.counters[cid] ??= { used: 0, history: [] }).used = n;
         writeLocal(d);
       });
     },
-    async incrUsed(id) {
+    async incrUsed(uid, cid) {
       return serialized(() => {
         const d = readLocal();
-        const c = (d.counters[id] ??= { used: 0, history: [] });
+        const s = scopeOf(d, uid);
+        const c = (s.counters[cid] ??= { used: 0, history: [] });
         c.used += 1;
         writeLocal(d);
         return c.used;
       });
     },
-    async decrUsed(id) {
+    async decrUsed(uid, cid) {
       return serialized(() => {
         const d = readLocal();
-        const c = (d.counters[id] ??= { used: 0, history: [] });
+        const s = scopeOf(d, uid);
+        const c = (s.counters[cid] ??= { used: 0, history: [] });
         c.used = Math.max(0, c.used - 1);
         writeLocal(d);
         return c.used;
       });
     },
-    async pushHistory(id, r) {
+    async pushHistory(uid, cid, r) {
       await serialized(() => {
         const d = readLocal();
-        const c = (d.counters[id] ??= { used: 0, history: [] });
-        c.history.unshift(r); // newest first
+        const s = scopeOf(d, uid);
+        (s.counters[cid] ??= { used: 0, history: [] }).history.unshift(r); // newest first
         writeLocal(d);
       });
     },
-    async popHistory(id) {
+    async popHistory(uid, cid) {
       return serialized(() => {
         const d = readLocal();
-        const c = d.counters[id];
+        const c = d.users[uid]?.counters[cid];
         const popped = c?.history.shift() ?? null;
         if (popped) writeLocal(d);
         return popped;
       });
     },
-    async getHistory(id) {
-      return readLocal().counters[id]?.history ?? [];
+    async getHistory(uid, cid) {
+      return readLocal().users[uid]?.counters[cid]?.history ?? [];
     },
-    async clearHistory(id) {
+    async clearHistory(uid, cid) {
       await serialized(() => {
         const d = readLocal();
-        const c = d.counters[id];
+        const c = d.users[uid]?.counters[cid];
         if (c) {
           c.history = [];
           writeLocal(d);
         }
       });
     },
-    async destroyCounter(id) {
+    async destroyCounter(uid, cid) {
       await serialized(() => {
         const d = readLocal();
-        d.metas = d.metas.filter((m) => m.id !== id);
-        delete d.counters[id];
+        const s = d.users[uid];
+        if (!s) return;
+        s.metas = s.metas.filter((m) => m.id !== cid);
+        delete s.counters[cid];
         writeLocal(d);
       });
     },

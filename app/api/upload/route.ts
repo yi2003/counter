@@ -1,3 +1,4 @@
+import { requireUser } from "@/lib/auth";
 import { uploadImage } from "@/lib/blob";
 import { jsonError, withErrors } from "@/lib/state";
 
@@ -13,6 +14,9 @@ export const dynamic = "force-dynamic";
  */
 export async function POST(req: Request) {
   return withErrors(async () => {
+    const user = await requireUser();
+    if (!user) return jsonError("Sign in required", 401);
+
     let form: FormData;
     try {
       form = await req.formData();

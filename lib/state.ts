@@ -1,13 +1,12 @@
 import { getStore } from "./store";
-import type { AppState, CounterMeta, CounterSummary } from "./types";
+import type { AppState, CounterSummary } from "./types";
 
-/** Home-screen summaries: every counter's config + current used count. */
-export async function listSummaries(): Promise<{
-  counters: CounterSummary[];
-  storage: "kv" | "local";
-}> {
+/** Home-screen summaries: every counter of ONE user + current used counts. */
+export async function listSummaries(
+  userId: string,
+): Promise<{ counters: CounterSummary[]; storage: "kv" | "local" }> {
   const store = await getStore();
-  const metas = await store.listMetas();
+  const metas = await store.listMetas(userId);
   const counters = await Promise.all(
     metas.map(async (m) => ({
       id: m.id,
@@ -16,20 +15,23 @@ export async function listSummaries(): Promise<{
       coverImage: m.coverImage,
       createdAt: m.createdAt,
       parentId: m.parentId ?? null,
-      used: await store.getUsed(m.id),
+      used: await store.getUsed(userId, m.id),
     })),
   );
   return { counters, storage: store.mode };
 }
 
-/** Full state of one counter, or null when the id is unknown. */
-export async function buildCounterState(id: string): Promise<AppState | null> {
+/** Full state of one of the user's counters, or null when the id is unknown. */
+export async function buildCounterState(
+  userId: string,
+  id: string,
+): Promise<AppState | null> {
   const store = await getStore();
-  const metas = await store.listMetas();
-  const meta: CounterMeta | undefined = metas.find((m) => m.id === id);
+  const metas = await store.listMetas(userId);
+  const meta = metas.find((m) => m.id === id);
   if (!meta) return null;
-  const used = await store.getUsed(id);
-  const history = await store.getHistory(id);
+  const used = await store.getUsed(userId, id);
+  const history = await store.getHistory(userId, id);
   return { project: meta, used, history, storage: store.mode };
 }
 

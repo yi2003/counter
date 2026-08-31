@@ -1,3 +1,4 @@
+import { requireUser } from "@/lib/auth";
 import { newCounterId } from "@/lib/store";
 import { jsonError, listSummaries, withErrors } from "@/lib/state";
 import { getStore } from "@/lib/store";
@@ -8,11 +9,18 @@ export const dynamic = "force-dynamic";
 const MAX_COUNTERS = 50;
 
 export async function GET() {
-  return withErrors(async () => Response.json(await listSummaries()));
+  return withErrors(async () => {
+    const user = await requireUser();
+    if (!user) return jsonError("Sign in required", 401);
+    return Response.json(await listSummaries(user.sub));
+  });
 }
 
 export async function POST(req: Request) {
   return withErrors(async () => {
+    const user = await requireUser();
+    if (!user) return jsonError("Sign in required", 401);
+
     const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
     if (!body) return jsonError("Invalid JSON body");
 
@@ -22,7 +30,7 @@ export async function POST(req: Request) {
     if (total === null) return jsonError("Total must be an integer between 1 and 1,000,000");
 
     const store = await getStore();
-    const metas = await store.listMetas();
+    const metas = await store.listMetas(user.sub);
     if (metas.length >= MAX_COUNTERS) {
       return jsonError(`Counter limit reached (max ${MAX_COUNTERS})`, 409);
     }
@@ -43,9 +51,9 @@ export async function POST(req: Request) {
       createdAt: new Date().toISOString(),
       parentId,
     };
-    await store.saveMeta(meta);
-    await store.setUsed(meta.id, 0);
+    await store.saveMeta(user.sub, meta);
+    await store.setUsed(user.sub, meta.id, 0);
 
-    return Response.json({ ...(await listSummaries()), id: meta.id });
+    return Response.json({ ...(await listSummaries(user.sub)), id: meta.id });
   });
 }

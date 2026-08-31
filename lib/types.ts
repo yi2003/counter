@@ -38,6 +38,13 @@ export interface AppState {
   storage: "kv" | "local";
 }
 
+export interface SessionUser {
+  sub: string; // stable Google account id (or "guest" when auth is off)
+  name: string;
+  email: string | null;
+  picture: string | null;
+}
+
 export const DEFAULT_PROJECT: ProjectConfig = {
   name: "My Counter",
   total: 60,

@@ -1,9 +1,12 @@
-"use client";
-
-import { useParams } from "next/navigation";
+import { redirect } from "next/navigation";
+import { requireUser } from "@/lib/auth";
 import CounterDetail from "@/components/CounterDetail";
 
-export default function CounterPage() {
-  const params = useParams<{ id: string }>();
-  return <CounterDetail id={params.id} />;
+export const dynamic = "force-dynamic";
+
+export default async function CounterPage({ params }: { params: Promise<{ id: string }> }) {
+  const user = await requireUser();
+  if (!user) redirect("/login");
+  const { id } = await params;
+  return <CounterDetail id={id} user={user} />;
 }

@@ -23,6 +23,19 @@ A universal, self-hosted check-in counter: customize the project name and total 
 | Images | Vercel Blob (`@vercel/blob`) |
 | Hosting | Vercel (Hobby plan friendly) |
 
+## 🔒 Privacy & Google sign-in
+
+By default the deployment runs in **public guest mode** (a warning banner is shown). To lock the app to Google accounts — every account gets its own private counters, history and images:
+
+1. [console.cloud.google.com](https://console.cloud.google.com) → create/select a project → **APIs & Services → OAuth consent screen** → External → fill in the app name + your email → add your own account as a test user (or Publish)
+2. **Credentials → Create Credentials → OAuth client ID → Web application**. Authorized redirect URIs:
+   - `https://YOUR-APP.vercel.app/api/auth/callback/google`
+   - `http://localhost:3000/api/auth/callback/google` (for local dev)
+3. Copy the client ID/secret into Vercel env vars `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` (optionally `SESSION_SECRET`), redeploy
+4. The app now redirects visitors to a Google sign-in page; data is stored per account (`user.sub`)
+
+Sessions are HMAC-signed HttpOnly cookies — no third-party auth library, no session database.
+
 ## 🚀 Quick start (local)
 
 ```bash
@@ -52,6 +65,7 @@ Works out of the box **without any cloud config**: when `KV_REST_API_URL` / `BLO
 > - Hobby free tiers: Blob 10 GB storage + 1 GB/month bandwidth; KV 256 MB + 30,000 requests/month — plenty for personal use.
 > - Deploying **without** the env vars still works — but on Vercel the fallback storage is **ephemeral** (read-only project dir → `/tmp`, per instance), so data won't persist or sync. Fine for a first look; add the KV/Blob vars for real use. The footer badge tells you which mode is active.
 > - The fallback data directory can be overridden with the `DATA_DIR` env var.
+> - Want the app **private**? See [Privacy & Google sign-in](#-privacy--google-sign-in) — without it, anyone with the link can view and edit.
 
 ## 🔌 API
 

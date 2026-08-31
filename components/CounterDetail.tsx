@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import type { AppState, CheckinRecord, CounterSummary } from "@/lib/types";
+import type { AppState, CheckinRecord, CounterSummary, SessionUser } from "@/lib/types";
 import { api, errMsg, uploadImages } from "@/lib/client";
 import type { PreparedImages } from "@/lib/image";
 import ProgressRing from "@/components/ProgressRing";
@@ -15,13 +15,14 @@ import Lightbox from "@/components/Lightbox";
 import SubCounterCard from "@/components/SubCounterCard";
 import NewCounterModal from "@/components/NewCounterModal";
 import ToastHost, { useToasts } from "@/components/ToastHost";
+import UserChip from "@/components/UserChip";
 import { IconBack, IconGear } from "@/components/icons";
 
 type Busy = "checkin" | "undo" | "reset" | "config" | "delete" | "newsub" | null;
 
 const enc = encodeURIComponent;
 
-export default function CounterDetail({ id }: { id: string }) {
+export default function CounterDetail({ id, user }: { id: string; user: SessionUser }) {
   const [state, setState] = useState<AppState | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [busy, setBusy] = useState<Busy>(null);
@@ -230,14 +231,17 @@ export default function CounterDetail({ id }: { id: string }) {
             </p>
           </div>
         </div>
-        <button
-          className="icon-btn"
-          aria-label="Counter settings"
-          title="Counter settings"
-          onClick={() => setShowSettings(true)}
-        >
-          <IconGear />
-        </button>
+        <div className="topbar-actions">
+          <UserChip user={user} />
+          <button
+            className="icon-btn"
+            aria-label="Counter settings"
+            title="Counter settings"
+            onClick={() => setShowSettings(true)}
+          >
+            <IconGear />
+          </button>
+        </div>
       </header>
 
       {project.coverImage && (

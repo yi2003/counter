@@ -1,3 +1,4 @@
+import { requireUser } from "@/lib/auth";
 import { deleteImage } from "@/lib/blob";
 import { buildCounterState, jsonError, withErrors } from "@/lib/state";
 import { getStore } from "@/lib/store";
@@ -9,8 +10,10 @@ type Ctx = { params: Promise<{ id: string }> };
 
 export async function GET(_req: Request, { params }: Ctx) {
   return withErrors(async () => {
+    const user = await requireUser();
+    if (!user) return jsonError("Sign in required", 401);
     const { id } = await params;
-    const state = await buildCounterState(id);
+    const state = await buildCounterState(user.sub, id);
     if (!state) return jsonError("Counter not found", 404);
     return Response.json(state);
   });
@@ -19,12 +22,15 @@ export async function GET(_req: Request, { params }: Ctx) {
 /** Update the counter's config: name / total / coverImage. */
 export async function PUT(req: Request, { params }: Ctx) {
   return withErrors(async () => {
+    const user = await requireUser();
+    if (!user) return jsonError("Sign in required", 401);
     const { id } = await params;
+
     const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
     if (!body) return jsonError("Invalid JSON body");
 
     const store = await getStore();
-    const metas = await store.listMetas();
+    const metas = await store.listMetas(user.sub);
     const i = metas.findIndex((m) => m.id === id);
     if (i < 0) return jsonError("Counter not found", 404);
 
@@ -46,8 +52,8 @@ export async function PUT(req: Request, { params }: Ctx) {
       meta.coverImage = cleanImageUrl(body.coverImage);
     }
 
-    await store.saveMeta(meta);
-    const state = await buildCounterState(id);
+    await store.saveMeta(user.sub, meta);
+    const state = await buildCounterState(user.sub, id);
     return Response.json(state);
   });
 }
@@ -55,15 +61,18 @@ export async function PUT(req: Request, { params }: Ctx) {
 /** Delete the counter — cascades to its sub-counters (images cleaned up, best effort). */
 export async function DELETE(_req: Request, { params }: Ctx) {
   return withErrors(async () => {
+    const user = await requireUser();
+    if (!user) return jsonError("Sign in required", 401);
     const { id } = await params;
+
     const store = await getStore();
-    const metas = await store.listMetas();
+    const metas = await store.listMetas(user.sub);
     if (!metas.some((m) => m.id === id)) return jsonError("Counter not found", 404);
 
     const children = metas.filter((m) => m.parentId === id);
-    const destroy = async (counterId: string) => {
-      const history = await store.getHistory(counterId);
-      await store.destroyCounter(counterId);
+    const destroy = async (cid: string) => {
+      const history = await store.getHistory(user.sub, cid);
+      await store.destroyCounter(user.sub, cid);
       // Best-effort cleanup of stored images + thumbnails (bounded).
       await Promise.all(
         history.slice(0, 100).flatMap((r) => [deleteImage(r.image), deleteImage(r.thumb)]),
