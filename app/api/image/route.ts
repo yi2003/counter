@@ -48,6 +48,7 @@ export async function GET(req: Request) {
     if (etag) out.set("ETag", etag);
     out.set("Cache-Control", "private, max-age=86400, immutable");
     out.set("Content-Disposition", "inline");
+    out.set("X-Content-Type-Options", "nosniff");
 
     return new Response(stream, { status: 200, headers: out });
   });
