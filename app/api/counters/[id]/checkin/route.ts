@@ -1,5 +1,5 @@
 import { requireUser } from "@/lib/auth";
-import { jsonError, withErrors } from "@/lib/state";
+import { jsonError, withErrors, withClientRecordImages } from "@/lib/state";
 import { getStore } from "@/lib/store";
 import { cleanImageUrl, cleanNote } from "@/lib/validate";
 
@@ -34,6 +34,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const newUsed = await store.incrUsed(user.sub, id);
     await store.pushHistory(user.sub, id, record);
 
-    return Response.json({ used: newUsed, record });
+    // Serve the proxy URL (not the raw private blob URL) so the new record
+    // renders immediately — same rewriting as buildCounterState.
+    return Response.json({ used: newUsed, record: withClientRecordImages([record])[0] });
   });
 }

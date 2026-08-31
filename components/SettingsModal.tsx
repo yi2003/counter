@@ -23,7 +23,10 @@ export default function SettingsModal({
 }) {
   const [name, setName] = useState(project.name);
   const [total, setTotal] = useState(String(project.total));
+  // `cover` holds the value we SAVE (raw blob url / idb: ref);
+  // `coverPreview` is always a renderable URL for the <img>.
   const [cover, setCover] = useState<string | null>(project.coverImage ?? null);
+  const [coverPreview, setCoverPreview] = useState<string | null>(project.coverImage ?? null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -45,7 +48,11 @@ export default function SettingsModal({
     try {
       const compressed = await compressImage(raw);
       const { url } = await uploadFile(compressed);
-      setCover(url);
+      setCover(url); // store the storage reference, not a display URL
+      setCoverPreview((prev) => {
+        if (prev?.startsWith("blob:")) URL.revokeObjectURL(prev);
+        return URL.createObjectURL(compressed);
+      });
     } catch (e) {
       setError(errMsg(e));
     } finally {
@@ -111,10 +118,14 @@ export default function SettingsModal({
           <span className="field-label">Cover image (optional)</span>
           {cover ? (
             <div className="cover-edit">
-              <img src={cover} alt="Cover preview" />
+              <img src={coverPreview ?? cover} alt="Cover preview" />
               <button
                 className="btn btn-ghost danger-text btn-sm"
-                onClick={() => setCover(null)}
+                onClick={() => {
+                  if (coverPreview?.startsWith("blob:")) URL.revokeObjectURL(coverPreview);
+                  setCover(null);
+                  setCoverPreview(null);
+                }}
                 disabled={locked}
               >
                 <IconTrash /> Remove cover

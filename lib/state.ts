@@ -19,7 +19,8 @@ function withClientImages(meta: CounterMeta): CounterMeta {
   return { ...meta, coverImage: toClientImageUrl(meta.coverImage) };
 }
 
-function withClientRecordImages(records: CheckinRecord[]): CheckinRecord[] {
+/** Rewrites image refs in records/cover for the client (idb: pass-through). */
+export function withClientRecordImages(records: CheckinRecord[]): CheckinRecord[] {
   return records.map((r) => ({
     ...r,
     image: toClientImageUrl(r.image),
