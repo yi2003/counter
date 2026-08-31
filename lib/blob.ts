@@ -18,8 +18,24 @@ export function uploadDir(): string {
   return UPLOAD_DIR;
 }
 
+/**
+ * Finds the Blob read/write token in the environment.
+ * Standard name first (BLOB_READ_WRITE_TOKEN); falls back to prefixed names
+ * some Vercel storage integrations inject, e.g. "cc_BLOB_READ_WRITE_TOKEN".
+ */
+export function blobToken(): string | undefined {
+  const t = process.env.BLOB_READ_WRITE_TOKEN;
+  if (t) return t;
+  for (const key of Object.keys(process.env).sort()) {
+    if (!key.endsWith("_BLOB_READ_WRITE_TOKEN")) continue;
+    const v = process.env[key];
+    if (v) return v;
+  }
+  return undefined;
+}
+
 export function blobEnabled(): boolean {
-  return Boolean(process.env.BLOB_READ_WRITE_TOKEN);
+  return Boolean(blobToken());
 }
 
 export async function uploadImage(
@@ -35,7 +51,7 @@ export async function uploadImage(
     const blob = await put(`checkins/${name}`, file, {
       access: "private",
       addRandomSuffix: false,
-      token: process.env.BLOB_READ_WRITE_TOKEN,
+      token: blobToken(),
     });
     return blob.url;
   }
@@ -54,7 +70,7 @@ export async function deleteImage(url: string | null | undefined): Promise<void>
       await fs.unlink(path.join(UPLOAD_DIR, path.basename(url)));
     } else if (blobEnabled()) {
       const { del } = await import("@vercel/blob");
-      await del(url, { token: process.env.BLOB_READ_WRITE_TOKEN });
+      await del(url, { token: blobToken() });
     }
   } catch (err) {
     console.warn("[blob] deleteImage failed (ignored):", err);
