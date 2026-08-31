@@ -1,9 +1,9 @@
 import fs from "fs/promises";
 import path from "path";
-import { blobEnabled } from "@/lib/blob";
+import { blobEnabled, uploadDir } from "@/lib/blob";
 
 /**
- * Dev-only route that serves locally stored uploads (.data/uploads).
+ * Dev-only route that serves locally stored uploads (<dataDir>/uploads).
  * In production, images live in Vercel Blob and are served by its CDN,
  * so this route returns 404 when Blob is configured.
  */
@@ -34,7 +34,7 @@ export async function GET(
   if (!type) return new Response("Not found", { status: 404 });
 
   try {
-    const buf = await fs.readFile(path.join(process.cwd(), ".data", "uploads", safe));
+    const buf = await fs.readFile(path.join(uploadDir(), safe));
     return new Response(new Uint8Array(buf), {
       headers: {
         "Content-Type": type,

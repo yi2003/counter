@@ -1,5 +1,5 @@
 import { deleteImage } from "@/lib/blob";
-import { buildCounterState, jsonError } from "@/lib/state";
+import { buildCounterState, jsonError, withErrors } from "@/lib/state";
 import { getStore } from "@/lib/store";
 import { cleanImageUrl, cleanName, cleanTotal } from "@/lib/validate";
 
@@ -8,65 +8,71 @@ export const dynamic = "force-dynamic";
 type Ctx = { params: Promise<{ id: string }> };
 
 export async function GET(_req: Request, { params }: Ctx) {
-  const { id } = await params;
-  const state = await buildCounterState(id);
-  if (!state) return jsonError("Counter not found", 404);
-  return Response.json(state);
+  return withErrors(async () => {
+    const { id } = await params;
+    const state = await buildCounterState(id);
+    if (!state) return jsonError("Counter not found", 404);
+    return Response.json(state);
+  });
 }
 
 /** Update the counter's config: name / total / coverImage. */
 export async function PUT(req: Request, { params }: Ctx) {
-  const { id } = await params;
-  const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
-  if (!body) return jsonError("Invalid JSON body");
+  return withErrors(async () => {
+    const { id } = await params;
+    const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
+    if (!body) return jsonError("Invalid JSON body");
 
-  const store = await getStore();
-  const metas = await store.listMetas();
-  const i = metas.findIndex((m) => m.id === id);
-  if (i < 0) return jsonError("Counter not found", 404);
+    const store = await getStore();
+    const metas = await store.listMetas();
+    const i = metas.findIndex((m) => m.id === id);
+    if (i < 0) return jsonError("Counter not found", 404);
 
-  const meta = { ...metas[i] };
+    const meta = { ...metas[i] };
 
-  if ("name" in body) {
-    const name = cleanName(body.name);
-    if (!name) return jsonError("Project name cannot be empty");
-    meta.name = name;
-  }
+    if ("name" in body) {
+      const name = cleanName(body.name);
+      if (!name) return jsonError("Project name cannot be empty");
+      meta.name = name;
+    }
 
-  if ("total" in body) {
-    const total = cleanTotal(body.total);
-    if (total === null) return jsonError("Total must be an integer between 1 and 1,000,000");
-    meta.total = total;
-  }
+    if ("total" in body) {
+      const total = cleanTotal(body.total);
+      if (total === null) return jsonError("Total must be an integer between 1 and 1,000,000");
+      meta.total = total;
+    }
 
-  if ("coverImage" in body) {
-    meta.coverImage = cleanImageUrl(body.coverImage);
-  }
+    if ("coverImage" in body) {
+      meta.coverImage = cleanImageUrl(body.coverImage);
+    }
 
-  await store.saveMeta(meta);
-  const state = await buildCounterState(id);
-  return Response.json(state);
+    await store.saveMeta(meta);
+    const state = await buildCounterState(id);
+    return Response.json(state);
+  });
 }
 
 /** Delete the counter — cascades to its sub-counters (images cleaned up, best effort). */
 export async function DELETE(_req: Request, { params }: Ctx) {
-  const { id } = await params;
-  const store = await getStore();
-  const metas = await store.listMetas();
-  if (!metas.some((m) => m.id === id)) return jsonError("Counter not found", 404);
+  return withErrors(async () => {
+    const { id } = await params;
+    const store = await getStore();
+    const metas = await store.listMetas();
+    if (!metas.some((m) => m.id === id)) return jsonError("Counter not found", 404);
 
-  const children = metas.filter((m) => m.parentId === id);
-  const destroy = async (counterId: string) => {
-    const history = await store.getHistory(counterId);
-    await store.destroyCounter(counterId);
-    // Best-effort cleanup of stored images + thumbnails (bounded).
-    await Promise.all(
-      history.slice(0, 100).flatMap((r) => [deleteImage(r.image), deleteImage(r.thumb)]),
-    );
-  };
+    const children = metas.filter((m) => m.parentId === id);
+    const destroy = async (counterId: string) => {
+      const history = await store.getHistory(counterId);
+      await store.destroyCounter(counterId);
+      // Best-effort cleanup of stored images + thumbnails (bounded).
+      await Promise.all(
+        history.slice(0, 100).flatMap((r) => [deleteImage(r.image), deleteImage(r.thumb)]),
+      );
+    };
 
-  await Promise.all(children.map((c) => destroy(c.id)));
-  await destroy(id);
+    await Promise.all(children.map((c) => destroy(c.id)));
+    await destroy(id);
 
-  return Response.json({ ok: true, removed: children.length + 1 });
+    return Response.json({ ok: true, removed: children.length + 1 });
+  });
 }

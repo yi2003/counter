@@ -1,14 +1,21 @@
 import fs from "fs/promises";
 import path from "path";
 import crypto from "crypto";
+import { baseDataDir } from "./paths";
 
 /**
  * Image storage:
  * - Production: Vercel Blob (requires BLOB_READ_WRITE_TOKEN).
- * - Dev fallback: local files under .data/uploads served via /api/uploads/[file].
+ * - Dev fallback: local files under <dataDir>/uploads served via /api/uploads/[file].
+ *   <dataDir> is the project's .data/ locally, or ephemeral /tmp on serverless.
  */
 
-const UPLOAD_DIR = path.join(process.cwd(), ".data", "uploads");
+const UPLOAD_DIR = path.join(baseDataDir(), "uploads");
+
+/** Directory the /api/uploads/[file] route serves from. */
+export function uploadDir(): string {
+  return UPLOAD_DIR;
+}
 
 export function blobEnabled(): boolean {
   return Boolean(process.env.BLOB_READ_WRITE_TOKEN);

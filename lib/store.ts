@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import { baseDataDir } from "./paths";
 import type { CheckinRecord, CounterMeta } from "./types";
 import { DEFAULT_PROJECT } from "./types";
 
@@ -143,7 +144,7 @@ interface LocalData {
   counters: Record<string, LocalCounter>;
 }
 
-const DATA_DIR = path.join(process.cwd(), ".data");
+const DATA_DIR = baseDataDir();
 const DATA_FILE = path.join(DATA_DIR, "store.json");
 
 function seedLocal(): LocalData {

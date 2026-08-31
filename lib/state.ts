@@ -36,3 +36,14 @@ export async function buildCounterState(id: string): Promise<AppState | null> {
 export function jsonError(message: string, status = 400): Response {
   return Response.json({ error: message }, { status });
 }
+
+/** Wraps a route handler so unexpected errors return readable JSON, not a blind 500. */
+export async function withErrors(fn: () => Promise<Response>): Promise<Response> {
+  try {
+    return await fn();
+  } catch (err) {
+    // Full stack lands in the platform logs (e.g. Vercel → Deployments → Logs).
+    console.error("[api] handler error:", err);
+    return jsonError(err instanceof Error ? err.message : "Internal server error", 500);
+  }
+}
