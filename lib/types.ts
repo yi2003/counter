@@ -8,8 +8,13 @@ export interface ProjectConfig {
 export interface CounterMeta extends ProjectConfig {
   id: string;
   createdAt: string;
-  /** Set when this is a sub-counter of another counter (one level max). */
+  /** Set when this is a child of another counter. */
   parentId?: string | null;
+  /**
+   * Rounder: a named round group under a counter (Counter → Round → exercises).
+   * It holds exercise counters; it has no count of its own.
+   */
+  rounder?: boolean;
 }
 
 /** Card-level summary for the home screen / sub-counter lists. */
@@ -21,6 +26,7 @@ export interface CounterSummary {
   used: number;
   createdAt: string;
   parentId?: string | null;
+  rounder?: boolean;
 }
 
 export interface CheckinRecord {

@@ -50,6 +50,7 @@ export function localListSummaries(data: LocalData): CounterSummary[] {
     coverImage: m.coverImage,
     createdAt: m.createdAt,
     parentId: m.parentId ?? null,
+    rounder: m.rounder === true,
     used: data.used[m.id] ?? 0,
   }));
 }
@@ -64,7 +65,7 @@ export function localCreateCounter(
 ): { id: string } {
   const name = typeof input.name === "string" ? input.name.trim() : "";
   if (!name) throw new Error("Project name cannot be empty");
-  const total = Math.floor(Number(input.total));
+  let total = Math.floor(Number(input.total));
   if (!Number.isFinite(total) || total < 1 || total > 1_000_000) {
     throw new Error("Total must be an integer between 1 and 1,000,000");
   }
@@ -72,18 +73,61 @@ export function localCreateCounter(
     throw new Error(`Counter limit reached (max ${MAX_LOCAL_COUNTERS})`);
   }
   let parentId: string | null = null;
+  let isRounder = false;
   if (input.parentId) {
     const parent = data.counters.find((c) => c.id === input.parentId);
     if (!parent) throw new Error("Parent counter not found");
-    if (parent.parentId) throw new Error("Sub-counters cannot have their own sub-counters");
+    if (parent.rounder) {
+      // parent is a round → this is an exercise counter
+    } else if (parent.parentId) {
+      throw new Error("Exercises cannot contain further counters");
+    } else {
+      // parent is a top counter → this is a round (rounder group)
+      isRounder = true;
+      total = 1; // rounds have no count of their own
+    }
     parentId = parent.id;
   }
   const id = genId();
-  const meta: CounterMeta = { name, total, coverImage: null, id, createdAt: new Date().toISOString(), parentId };
+  const meta: CounterMeta = {
+    name,
+    total,
+    coverImage: null,
+    id,
+    createdAt: new Date().toISOString(),
+    parentId,
+    ...(isRounder ? { rounder: true } : {}),
+  };
   data.counters.push(meta);
   data.used[id] = 0;
   data.history[id] = [];
   return { id };
+}
+
+/**
+ * One-time shape migration for local data: exercises attached directly to a
+ * counter are wrapped into a "Round 1" group. Returns true when changed.
+ */
+export function localMigrateRounds(data: LocalData, counterId: string): boolean {
+  if (!data.counters.some((c) => c.id === counterId)) return false;
+  const direct = data.counters.filter(
+    (c) => c.parentId === counterId && c.rounder !== true,
+  );
+  if (direct.length === 0) return false;
+  const rounderId = genId();
+  data.counters.push({
+    id: rounderId,
+    name: "Round 1",
+    total: direct.length,
+    coverImage: null,
+    createdAt: new Date().toISOString(),
+    parentId: counterId,
+    rounder: true,
+  });
+  data.used[rounderId] = 0;
+  data.history[rounderId] = [];
+  for (const s of direct) s.parentId = rounderId;
+  return true;
 }
 
 export function localGetCounter(data: LocalData, id: string): AppState | null {
@@ -121,10 +165,14 @@ export function localUpdateCounter(
   return localGetCounter(data, id);
 }
 
-/** Collects cascade ids: the counter itself plus its direct sub-counters. */
+/** Collects cascade ids: the counter, its rounds, and all their exercises. */
 export function localCascadeIds(data: LocalData, id: string): string[] {
-  const subs = data.counters.filter((c) => c.parentId === id).map((c) => c.id);
-  return [id, ...subs];
+  const children = data.counters.filter((c) => c.parentId === id).map((c) => c.id);
+  const childSet = new Set(children);
+  const grandchildren = data.counters
+    .filter((c) => c.parentId && childSet.has(c.parentId))
+    .map((c) => c.id);
+  return [id, ...children, ...grandchildren];
 }
 
 /** Image refs (idb:…) referenced by the given counters — for storage cleanup. */
@@ -156,16 +204,26 @@ export function localDeleteCounter(
   return { removedIds, imageRefs };
 }
 
-/** Local duplicate of a counter (and its sub-counters) — zeroed, name + " (copy)". */
+/** Local duplicate of a counter — and everything below it — zeroed, name + " (copy)". */
 export function localDuplicateCounter(data: LocalData, id: string): { id: string } {
   const meta = data.counters.find((c) => c.id === id);
   if (!meta) throw new Error("Counter not found");
-  const children = data.counters.filter((c) => c.parentId === id);
-  if (data.counters.length + 1 + children.length > MAX_LOCAL_COUNTERS) {
+  const isRounder = meta.rounder === true;
+  const childRounders = isRounder ? [] : data.counters.filter((c) => c.parentId === id && c.rounder === true);
+  const directChildren = data.counters.filter((c) => c.parentId === id && c.rounder !== true);
+  const childIds = new Set([...childRounders, ...directChildren].map((c) => c.id));
+  const grandchildren = data.counters.filter(
+    (c) => c.parentId && childIds.has(c.parentId) && c.parentId !== id,
+  );
+  if (
+    data.counters.length + 1 + childRounders.length + directChildren.length + grandchildren.length >
+    MAX_LOCAL_COUNTERS
+  ) {
     throw new Error(`Counter limit reached (max ${MAX_LOCAL_COUNTERS})`);
   }
   const now = new Date().toISOString();
   const newId = genId();
+  const idMap = new Map<string, string>([[id, newId]]);
   data.counters.push({
     ...meta,
     id: newId,
@@ -175,11 +233,37 @@ export function localDuplicateCounter(data: LocalData, id: string): { id: string
   });
   data.used[newId] = 0;
   data.history[newId] = [];
-  for (const child of children) {
-    const childId = genId();
-    data.counters.push({ ...child, id: childId, parentId: newId, coverImage: null, createdAt: now });
-    data.used[childId] = 0;
-    data.history[childId] = [];
+  for (const r of childRounders) {
+    const rid = genId();
+    idMap.set(r.id, rid);
+    data.counters.push({ ...r, id: rid, parentId: newId, coverImage: null, createdAt: now });
+    data.used[rid] = 0;
+    data.history[rid] = [];
+  }
+  for (const c of directChildren) {
+    const cid = genId();
+    idMap.set(c.id, cid);
+    data.counters.push({
+      ...c,
+      id: cid,
+      parentId: idMap.get(c.parentId!) ?? newId,
+      coverImage: null,
+      createdAt: now,
+    });
+    data.used[cid] = 0;
+    data.history[cid] = [];
+  }
+  for (const g of grandchildren) {
+    const gid = genId();
+    data.counters.push({
+      ...g,
+      id: gid,
+      parentId: idMap.get(g.parentId!) ?? newId,
+      coverImage: null,
+      createdAt: now,
+    });
+    data.used[gid] = 0;
+    data.history[gid] = [];
   }
   return { id: newId };
 }
@@ -190,30 +274,38 @@ export function localCheckin(
   input: { note?: string | null; image?: string | null; thumb?: string | null },
 ): {
   used: number;
-  record: CheckinRecord;
+  record: CheckinRecord | null;
   subUpdates: { id: string; used: number }[];
   skipped: string[];
   parentUpdate?: { id: string; used: number };
 } {
   const meta = data.counters.find((c) => c.id === id);
   if (!meta) throw new Error("Counter not found");
-  const used = data.used[id] ?? 0;
-  if (used >= meta.total) throw new Error("Target already reached");
-  const record: CheckinRecord = {
-    id: genId(),
-    timestamp: new Date().toISOString(),
-    note: typeof input.note === "string" && input.note.trim() ? input.note.trim() : null,
-    image: input.image ?? null,
-    thumb: input.thumb ?? null,
-  };
-  data.used[id] = used + 1;
-  data.history[id] = [record, ...(data.history[id] ?? [])];
+  const isRounder = meta.rounder === true;
 
-  // GROUP SEMANTICS: one check-in of the parent = one round; every direct
-  // sub-counter also gets +1 (skipping subs already at their own target).
+  let used = data.used[id] ?? 0;
+  if (!isRounder && used >= meta.total) throw new Error("Target already reached");
+
+  // A round check-in has no record of its own — it just +1s its exercises.
+  let record: CheckinRecord | null = null;
+  if (!isRounder) {
+    record = {
+      id: genId(),
+      timestamp: new Date().toISOString(),
+      note: typeof input.note === "string" && input.note.trim() ? input.note.trim() : null,
+      image: input.image ?? null,
+      thumb: input.thumb ?? null,
+    };
+    used += 1;
+    data.used[id] = used;
+    data.history[id] = [record, ...(data.history[id] ?? [])];
+  }
+
+  // GROUP SEMANTICS (rounds): checking in a round adds +1 to every exercise
+  // inside it (skipping exercises already at their target).
   const subUpdates: { id: string; used: number }[] = [];
   const skipped: string[] = [];
-  for (const child of data.counters.filter((c) => c.parentId === id)) {
+  for (const child of data.counters.filter((c) => c.parentId === id && c.rounder !== true)) {
     const childUsed = data.used[child.id] ?? 0;
     if (childUsed >= child.total) {
       skipped.push(child.name);
@@ -223,46 +315,60 @@ export function localCheckin(
     data.history[child.id] = [
       {
         id: genId(),
-        timestamp: record.timestamp,
+        timestamp: record?.timestamp ?? new Date().toISOString(),
         note: null,
         image: null,
         thumb: null,
-        origin: record.id,
+        origin: record?.id,
       },
       ...(data.history[child.id] ?? []),
     ];
     subUpdates.push({ id: child.id, used: data.used[child.id] });
   }
 
-  // PARENT AUTO-ROUND: if this counter belongs to a parent and every
-  // sub-counter of that parent has caught up (>= parent.used + 1), the
-  // parent completes one round automatically. Direct store mutations —
-  // NOT a recursive localCheckin — so subs are not double-counted.
+  // PARENT AUTO-ROUND: resolve which (round → counter) pair this check-in may
+  // complete. When EVERY exercise of the round has reached its target and the
+  // counter hasn't counted this round yet (origin marker), the counter +1s.
+  let round: CounterMeta | undefined;
+  let counter: CounterMeta | undefined;
+  if (meta.rounder) {
+    round = meta;
+    counter = data.counters.find((c) => c.id === meta.parentId);
+  } else if (meta.parentId) {
+    const r = data.counters.find((c) => c.id === meta.parentId);
+    if (r?.rounder) {
+      round = r;
+      counter = data.counters.find((c) => c.id === r.parentId);
+    }
+  }
+
   let parentUpdate: { id: string; used: number } | undefined;
-  if (meta.parentId) {
-    const parent = data.counters.find((c) => c.id === meta.parentId);
-    if (parent) {
-      const parentUsed = data.used[parent.id] ?? 0;
-      if (parentUsed < parent.total) {
-        const siblings = data.counters.filter((c) => c.parentId === parent.id);
-        if (siblings.every((s) => (data.used[s.id] ?? 0) >= parentUsed + 1)) {
-          data.used[parent.id] = parentUsed + 1;
-          data.history[parent.id] = [
+  if (round && counter) {
+    const exercises = data.counters.filter((c) => c.parentId === round!.id && c.rounder !== true);
+    const allDone = exercises.length > 0 && exercises.every((s) => (data.used[s.id] ?? 0) >= s.total);
+    if (allDone) {
+      const counterUsed = data.used[counter.id] ?? 0;
+      if (counterUsed < counter.total) {
+        const marker = `round:${round.id}`;
+        if (!(data.history[counter.id] ?? []).some((r) => r.origin === marker)) {
+          data.used[counter.id] = counterUsed + 1;
+          data.history[counter.id] = [
             {
               id: genId(),
-              timestamp: record.timestamp,
-              note: "Auto — all sub-counters completed",
+              timestamp: record?.timestamp ?? new Date().toISOString(),
+              note: `Auto — ${round.name} completed`,
               image: null,
               thumb: null,
+              origin: marker,
             },
-            ...(data.history[parent.id] ?? []),
+            ...(data.history[counter.id] ?? []),
           ];
-          parentUpdate = { id: parent.id, used: data.used[parent.id] };
+          parentUpdate = { id: counter.id, used: data.used[counter.id] };
         }
       }
     }
   }
-  return { used: data.used[id], record, subUpdates, skipped, parentUpdate };
+  return { used, record, subUpdates, skipped, parentUpdate };
 }
 
 export function localUndo(
@@ -280,10 +386,12 @@ export function localUndo(
   data.history[id] = history.slice(1);
   data.used[id] = Math.max(0, (data.used[id] ?? 1) - 1);
 
-  // GROUP SEMANTICS: undoing a round also removes the auto-records it
-  // created in each sub-counter (matched by origin tag).
+  // GROUP SEMANTICS: undoing a round check-in also removes the auto-records
+  // it created in each exercise (matched by origin tag).
   const subUpdates: { id: string; used: number }[] = [];
-  for (const child of data.counters.filter((c) => c.parentId === id)) {
+  for (const child of data.counters.filter(
+    (c) => c.parentId === id && c.rounder !== true,
+  )) {
     const childHistory = data.history[child.id] ?? [];
     const idx = childHistory.findIndex((r) => r.origin === removed.id);
     if (idx === -1) continue;
@@ -307,16 +415,21 @@ export function localReset(
   }
   data.history[id] = [];
   data.used[id] = 0;
-  // GROUP SEMANTICS: resetting a counter resets its sub-counters too.
+  // GROUP SEMANTICS: resetting a counter resets every exercise below it
+  // (rounds → exercises). Round markers live on the counter's history and
+  // are cleared above, so rounds can auto-count again after the reset.
   const subIds: string[] = [];
-  for (const child of data.counters.filter((c) => c.parentId === id)) {
+  const children = data.counters.filter((c) => c.parentId === id);
+  const childSet = new Set(children.map((c) => c.id));
+  const descendants = data.counters.filter((c) => c.parentId && childSet.has(c.parentId));
+  for (const child of [...descendants, ...children]) {
     for (const r of data.history[child.id] ?? []) {
       if (r.image) imageRefs.push(r.image);
       if (r.thumb) imageRefs.push(r.thumb);
     }
     data.history[child.id] = [];
     data.used[child.id] = 0;
-    subIds.push(child.id);
+    if (child.rounder !== true) subIds.push(child.id);
   }
   return { imageRefs, subIds };
 }

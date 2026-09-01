@@ -1,5 +1,5 @@
 import { blobConnected } from "./blob";
-import { getStore } from "./store";
+import { getStore, newCounterId } from "./store";
 import type { AppState, CheckinRecord, CounterMeta, CounterSummary } from "./types";
 
 /**
@@ -42,10 +42,37 @@ export async function listSummaries(
       coverImage: toClientImageUrl(m.coverImage),
       createdAt: m.createdAt,
       parentId: m.parentId ?? null,
+      rounder: m.rounder === true,
       used: await store.getUsed(userId, m.id),
     })),
   );
   return { counters, storage: store.mode, blob: blobConnected() };
+}
+
+/**
+ * One-time shape migration: counters created before the round layer had
+ * exercises attached directly (parentId = counter). Wrap them into a
+ * "Round 1" group so the Counter → Round → exercise shape always holds.
+ * Idempotent — runs only while direct exercise children exist.
+ */
+export async function ensureRoundMigration(userId: string, counterId: string): Promise<void> {
+  const store = await getStore();
+  const metas = await store.listMetas(userId);
+  if (!metas.some((m) => m.id === counterId)) return;
+  const direct = metas.filter((m) => m.parentId === counterId && m.rounder !== true);
+  if (direct.length === 0) return;
+  const now = new Date().toISOString();
+  const rounder = {
+    id: newCounterId(),
+    name: "Round 1",
+    total: direct.length,
+    coverImage: null,
+    createdAt: now,
+    parentId: counterId,
+    rounder: true,
+  };
+  await store.saveMeta(userId, rounder);
+  for (const s of direct) await store.saveMeta(userId, { ...s, parentId: rounder.id });
 }
 
 /** Full state of one of the user's counters, or null when the id is unknown. */

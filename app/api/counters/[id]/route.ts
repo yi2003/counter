@@ -1,6 +1,6 @@
 import { requireUser } from "@/lib/auth";
 import { deleteImage } from "@/lib/blob";
-import { buildCounterState, jsonError, withErrors } from "@/lib/state";
+import { buildCounterState, ensureRoundMigration, jsonError, withErrors } from "@/lib/state";
 import { getStore } from "@/lib/store";
 import { cleanImageUrl, cleanName, cleanTotal } from "@/lib/validate";
 
@@ -13,6 +13,9 @@ export async function GET(_req: Request, { params }: Ctx) {
     const user = await requireUser();
     if (!user) return jsonError("Sign in required", 401);
     const { id } = await params;
+    // Pre-round data (exercises attached directly to the counter) is wrapped
+    // into a "Round 1" group on first view.
+    await ensureRoundMigration(user.sub, id);
     const state = await buildCounterState(user.sub, id);
     if (!state) return jsonError("Counter not found", 404);
     return Response.json(state);
@@ -58,7 +61,7 @@ export async function PUT(req: Request, { params }: Ctx) {
   });
 }
 
-/** Delete the counter — cascades to its sub-counters (images cleaned up, best effort). */
+/** Delete the counter — cascades to rounds and their exercises (images cleaned up, best effort). */
 export async function DELETE(_req: Request, { params }: Ctx) {
   return withErrors(async () => {
     const user = await requireUser();
@@ -70,6 +73,9 @@ export async function DELETE(_req: Request, { params }: Ctx) {
     if (!metas.some((m) => m.id === id)) return jsonError("Counter not found", 404);
 
     const children = metas.filter((m) => m.parentId === id);
+    const childIds = new Set(children.map((c) => c.id));
+    const grandchildren = metas.filter((m) => m.parentId && childIds.has(m.parentId));
+
     const destroy = async (cid: string) => {
       const history = await store.getHistory(user.sub, cid);
       await store.destroyCounter(user.sub, cid);
@@ -79,9 +85,9 @@ export async function DELETE(_req: Request, { params }: Ctx) {
       );
     };
 
-    await Promise.all(children.map((c) => destroy(c.id)));
+    await Promise.all([...grandchildren, ...children].map((c) => destroy(c.id)));
     await destroy(id);
 
-    return Response.json({ ok: true, removed: children.length + 1 });
+    return Response.json({ ok: true, removed: grandchildren.length + children.length + 1 });
   });
 }

@@ -16,6 +16,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     const meta = metas.find((m) => m.id === id);
     if (!meta) return jsonError("Counter not found", 404);
 
+    // Reset the counter itself…
     const history = await store.getHistory(user.sub, id);
     await store.setUsed(user.sub, id, 0);
     await store.clearHistory(user.sub, id);
@@ -25,10 +26,14 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
       history.slice(0, 100).flatMap((r) => [deleteImage(r.image), deleteImage(r.thumb)]),
     );
 
-    // GROUP SEMANTICS: resetting a counter resets its sub-counters too.
+    // …and every exercise below it: rounds → exercises (plus any legacy
+    // direct exercises). Round markers on the counter's history are cleared
+    // with the history, so rounds can auto-count again after the reset.
     const children = metas.filter((m) => m.parentId === id);
+    const childIds = new Set(children.map((c) => c.id));
+    const grandchildren = metas.filter((m) => m.parentId && childIds.has(m.parentId));
     const subIds: string[] = [];
-    for (const child of children) {
+    for (const child of [...grandchildren, ...children]) {
       const childHistory = await store.getHistory(user.sub, child.id);
       await store.setUsed(user.sub, child.id, 0);
       await store.clearHistory(user.sub, child.id);
@@ -37,7 +42,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
           .slice(0, 100)
           .flatMap((r) => [deleteImage(r.image), deleteImage(r.thumb)]),
       );
-      subIds.push(child.id);
+      if (child.rounder !== true) subIds.push(child.id);
     }
 
     return Response.json({ used: 0, history: [], subIds });

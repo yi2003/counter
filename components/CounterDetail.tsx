@@ -12,13 +12,16 @@ import SettingsModal from "@/components/SettingsModal";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import HistoryList from "@/components/HistoryList";
 import Lightbox from "@/components/Lightbox";
-import SubCounterCard from "@/components/SubCounterCard";
 import NewCounterModal from "@/components/NewCounterModal";
 import ToastHost, { useToasts } from "@/components/ToastHost";
 import UserChip from "@/components/UserChip";
-import { IconBack, IconGear } from "@/components/icons";
+import { IconBack, IconGear, IconTrash } from "@/components/icons";
+import { CopyIcon } from "@/components/CounterCard";
+import { clampPct, progressColor } from "@/lib/progress";
 
 type Busy = "checkin" | "undo" | "reset" | "config" | "delete" | "newsub" | null;
+type RoundGroup = CounterSummary & { subs: CounterSummary[] };
+type NewChildTarget = { mode: "round" | "exercise"; parentId: string; parentName: string };
 
 const enc = encodeURIComponent;
 
@@ -36,11 +39,12 @@ export default function CounterDetail({
   const [busy, setBusy] = useState<Busy>(null);
   const [quickBusy, setQuickBusy] = useState<string | null>(null);
   const [dupBusy, setDupBusy] = useState<string | null>(null);
-  const [subs, setSubs] = useState<CounterSummary[]>([]);
+  const [rounds, setRounds] = useState<RoundGroup[]>([]);
   const [parent, setParent] = useState<CounterSummary | null>(null);
   const [showCheckin, setShowCheckin] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [showNewSub, setShowNewSub] = useState(false);
+  const [newChild, setNewChild] = useState<NewChildTarget | null>(null);
+  const [confirmRound, setConfirmRound] = useState<CounterSummary | null>(null);
   const [askReset, setAskReset] = useState(false);
   const [askDelete, setAskDelete] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
@@ -56,11 +60,22 @@ export default function CounterDetail({
         api<{ counters: CounterSummary[] }>("/api/counters"),
       ]);
       setState(s);
-      setSubs(list.counters.filter((c) => c.parentId === id));
+      setRounds(
+        list.counters
+          .filter((c) => c.parentId === id && c.rounder)
+          .map((r) => ({
+            ...r,
+            subs: list.counters.filter((x) => x.parentId === r.id),
+          })),
+      );
+      // Exercises sit inside a round — the "back" target is the owning counter.
+      const directParent = s.project.parentId
+        ? (list.counters.find((c) => c.id === s.project.parentId) ?? null)
+        : null;
       setParent(
-        s.project.parentId
-          ? (list.counters.find((c) => c.id === s.project.parentId) ?? null)
-          : null,
+        directParent?.rounder
+          ? (list.counters.find((c) => c.id === directParent.parentId) ?? null)
+          : directParent,
       );
     } catch (e) {
       setLoadError(errMsg(e));
@@ -83,32 +98,22 @@ export default function CounterDetail({
       }
       const res = await api<{
         used: number;
-        record: CheckinRecord;
-        subUpdates?: { id: string; used: number }[];
-        skipped?: string[];
+        record: CheckinRecord | null;
         parentUpdate?: { id: string; used: number };
       }>(`/api/counters/${enc(id)}/checkin`, {
         method: "POST",
         body: JSON.stringify({ note, image, thumb }),
       });
-      setState((s) => (s ? { ...s, used: res.used, history: [res.record, ...s.history] } : s));
-      if (res.subUpdates?.length) {
-        setSubs((list) =>
-          list.map((s) => {
-            const u = res.subUpdates?.find((x) => x.id === s.id);
-            return u ? { ...s, used: u.used } : s;
-          }),
-        );
+      if (res.record) {
+        setState((s) => (s ? { ...s, used: res.used, history: [res.record!, ...s.history] } : s));
       }
       setShowCheckin(false);
       setBounce(true);
       setTimeout(() => setBounce(false), 700);
       push(
-        res.skipped?.length
-          ? `Round checked in 🎉 — skipped: ${res.skipped.join(", ")} (already at target)`
-          : res.parentUpdate
-            ? "Checked in — round auto-completed for the parent ✅"
-            : "Checked in successfully 🎉",
+        res.parentUpdate
+          ? "Round completed — the counter auto-checked-in ✅"
+          : "Checked in successfully 🎉",
       );
     } catch (e) {
       push(errMsg(e), "error");
@@ -117,22 +122,76 @@ export default function CounterDetail({
     }
   }
 
+  /** "+1 all" on a round: one set for every exercise inside it. */
+  async function handleRoundCheckin(round: CounterSummary) {
+    setQuickBusy(round.id);
+    try {
+      const res = await api<{
+        subUpdates?: { id: string; used: number }[];
+        skipped?: string[];
+        parentUpdate?: { id: string; used: number };
+      }>(`/api/counters/${enc(round.id)}/checkin`, {
+        method: "POST",
+        body: JSON.stringify({}),
+      });
+      setRounds((list) =>
+        list.map((r) =>
+          r.id === round.id
+            ? {
+                ...r,
+                subs: r.subs.map((s) => {
+                  const u = res.subUpdates?.find((x) => x.id === s.id);
+                  return u ? { ...s, used: u.used } : s;
+                }),
+              }
+            : r,
+        ),
+      );
+      if (res.parentUpdate) {
+        push("Round completed — the counter auto-checked-in ✅");
+        await load();
+      } else if (res.skipped?.length) {
+        push(`+1 all — skipped: ${res.skipped.join(", ")} (already at target)`, "warning");
+      } else {
+        push(`+1 all in ${round.name}`);
+      }
+    } catch (e) {
+      push(errMsg(e), "error");
+    } finally {
+      setQuickBusy(null);
+    }
+  }
+
+  async function handleQuickAdd(sub: CounterSummary) {
+    setQuickBusy(sub.id);
+    try {
+      const res = await api<{ used: number; parentUpdate?: { id: string; used: number } }>(
+        `/api/counters/${enc(sub.id)}/checkin`,
+        { method: "POST", body: JSON.stringify({}) },
+      );
+      setRounds((list) =>
+        list.map((r) => ({
+          ...r,
+          subs: r.subs.map((s) => (s.id === sub.id ? { ...s, used: res.used } : s)),
+        })),
+      );
+      push(`+1 ${sub.name}`);
+      if (res.parentUpdate) {
+        push("Round completed — the counter auto-checked-in ✅");
+        await load();
+      }
+    } catch (e) {
+      push(errMsg(e), "error");
+    } finally {
+      setQuickBusy(null);
+    }
+  }
+
   async function handleUndo() {
     setBusy("undo");
     try {
-      const res = await api<{ used: number; subUpdates?: { id: string; used: number }[] }>(
-        `/api/counters/${enc(id)}/undo`,
-        { method: "POST" },
-      );
+      const res = await api<{ used: number }>(`/api/counters/${enc(id)}/undo`, { method: "POST" });
       setState((s) => (s ? { ...s, used: res.used, history: s.history.slice(1) } : s));
-      if (res.subUpdates?.length) {
-        setSubs((list) =>
-          list.map((s) => {
-            const u = res.subUpdates?.find((x) => x.id === s.id);
-            return u ? { ...s, used: u.used } : s;
-          }),
-        );
-      }
       push("Last check-in undone", "warning");
     } catch (e) {
       push(errMsg(e), "error");
@@ -144,15 +203,10 @@ export default function CounterDetail({
   async function handleReset() {
     setBusy("reset");
     try {
-      const res = await api<{ subIds?: string[] } | null>(`/api/counters/${enc(id)}/reset`, {
-        method: "POST",
-      });
+      await api(`/api/counters/${enc(id)}/reset`, { method: "POST" });
       setState((s) => (s ? { ...s, used: 0, history: [] } : s));
-      const subIds = res?.subIds ?? [];
-      if (subIds.length) {
-        setSubs((list) => list.map((s) => (subIds.includes(s.id) ? { ...s, used: 0 } : s)));
-      }
       setAskReset(false);
+      await load();
       push("Counter has been reset", "warning");
     } catch (e) {
       push(errMsg(e), "error");
@@ -194,16 +248,15 @@ export default function CounterDetail({
     }
   }
 
-  async function handleCreateSub(name: string, total: number) {
-    setBusy("newsub");
+  async function handleDeleteRound() {
+    if (!confirmRound) return;
+    const target = confirmRound;
+    setBusy("delete");
     try {
-      const res = await api<{ counters: CounterSummary[] }>("/api/counters", {
-        method: "POST",
-        body: JSON.stringify({ name, total, parentId: id }),
-      });
-      setSubs(res.counters.filter((c) => c.parentId === id));
-      setShowNewSub(false);
-      push(`Sub-counter “${name}” created`);
+      await api(`/api/counters/${enc(target.id)}`, { method: "DELETE" });
+      setConfirmRound(null);
+      push(`Round “${target.name}” deleted`, "warning");
+      await load();
     } catch (e) {
       push(errMsg(e), "error");
     } finally {
@@ -211,36 +264,33 @@ export default function CounterDetail({
     }
   }
 
-  async function handleQuickAdd(sub: CounterSummary) {
-    setQuickBusy(sub.id);
+  async function handleCreateChild(name: string, total: number) {
+    if (!newChild) return;
+    setBusy("newsub");
     try {
-      const res = await api<{ used: number; parentUpdate?: { id: string; used: number } }>(
-        `/api/counters/${enc(sub.id)}/checkin`,
-        { method: "POST", body: JSON.stringify({}) },
-      );
-      setSubs((list) => list.map((s) => (s.id === sub.id ? { ...s, used: res.used } : s)));
-      push(`+1 ${sub.name}`);
-      if (res.parentUpdate) {
-        // The last pending sub was checked in — the parent completed its round.
-        setState((s) =>
-          s && s.project.id === res.parentUpdate?.id
-            ? { ...s, used: res.parentUpdate.used }
-            : s,
-        );
-        push("All sub-counters done — round auto-checked in ✅");
-      }
+      await api("/api/counters", {
+        method: "POST",
+        body: JSON.stringify({
+          name,
+          total: newChild.mode === "round" ? 1 : total,
+          parentId: newChild.parentId,
+        }),
+      });
+      setNewChild(null);
+      push(`“${name}” created`);
+      await load();
     } catch (e) {
       push(errMsg(e), "error");
     } finally {
-      setQuickBusy(null);
+      setBusy(null);
     }
   }
 
-  async function handleDuplicateSub(sub: CounterSummary) {
-    setDupBusy(sub.id);
+  async function handleDuplicate(target: CounterSummary) {
+    setDupBusy(target.id);
     try {
-      await api(`/api/counters/${enc(sub.id)}/duplicate`, { method: "POST" });
-      push(`Duplicated ${sub.name} ✨`);
+      await api(`/api/counters/${enc(target.id)}/duplicate`, { method: "POST" });
+      push(`Duplicated ${target.name} ✨`);
       await load();
     } catch (e) {
       push(errMsg(e), "error");
@@ -278,7 +328,8 @@ export default function CounterDetail({
   const remaining = Math.max(0, project.total - used);
   const pct = project.total > 0 ? Math.round((used / project.total) * 100) : 0;
   const reached = used >= project.total;
-  const isSub = Boolean(project.parentId);
+  const isTopLevel = !project.parentId;
+  const exerciseCount = rounds.reduce((n, r) => n + r.subs.length, 0);
 
   return (
     <main className="container">
@@ -295,7 +346,7 @@ export default function CounterDetail({
           <div>
             <h1 className="app-title">{project.name}</h1>
             <p className="app-subtitle">
-              {parent ? `Sub-counter of ${parent.name}` : "Universal check-in counter"}
+              {parent ? `Part of ${parent.name}` : "Universal check-in counter"}
             </p>
           </div>
         </div>
@@ -385,39 +436,129 @@ export default function CounterDetail({
         {reached && <p className="reached-note">🎉 Target reached — nice work!</p>}
       </section>
 
-      {!isSub && (
-        <section className="card subs-card">
+      {isTopLevel && (
+        <section className="card rounds-card">
           <h2 className="section-title">
-            Sub-counters <span className="count-badge">{subs.length}</span>
+            Rounds <span className="count-badge">{rounds.length}</span>
           </h2>
-          {subs.length > 0 && (
-            <p className="subs-hint">
-              🔄 Round mode — a check-in here +1s every sub-counter (one check-in = one round),
-              and when every sub-counter has caught up, this counter auto-completes its next
-              round.
-            </p>
-          )}
-          {subs.length > 0 ? (
-            <div className="counter-grid">
-              {subs.map((s) => (
-                <SubCounterCard
-                  key={s.id}
-                  sub={s}
-                  busy={quickBusy === s.id}
-                  dupBusy={dupBusy === s.id}
-                  onQuickAdd={() => void handleQuickAdd(s)}
-                  onDuplicate={() => void handleDuplicateSub(s)}
-                />
-              ))}
-            </div>
-          ) : (
+          <p className="subs-hint">
+            🔄 Each round holds its exercises — when every exercise in a round reaches its target,
+            this counter auto-checks-in the round. “+1 all” adds one set to every exercise.
+          </p>
+          {rounds.length === 0 && (
             <p className="muted subs-empty">
-              No sub-counters yet — split this counter into smaller tracks (e.g. exercises,
-              medicines, habits).
+              No rounds yet — create your first round, then add exercises to it.
             </p>
           )}
-          <button className="btn btn-ghost btn-sm" onClick={() => setShowNewSub(true)}>
-            + Add sub-counter
+          {rounds.map((r) => {
+            const doneCount = r.subs.filter((s) => s.used >= s.total).length;
+            const roundDone = r.subs.length > 0 && doneCount === r.subs.length;
+            return (
+              <div className={`round-card${roundDone ? " round-done" : ""}`} key={r.id}>
+                <div className="round-head">
+                  <span className="round-name">{r.name}</span>
+                  <span className="round-progress">
+                    {roundDone
+                      ? "✅ complete"
+                      : `${doneCount}/${r.subs.length} exercise${r.subs.length === 1 ? "" : "s"} done`}
+                  </span>
+                  <span className="round-actions">
+                    <button
+                      className="round-pill"
+                      onClick={() => void handleRoundCheckin(r)}
+                      disabled={quickBusy === r.id || busy !== null || roundDone}
+                      title={
+                        roundDone ? "Round complete" : "Add one set to every exercise in this round"
+                      }
+                    >
+                      {quickBusy === r.id ? <span className="spinner spinner-dark" /> : "+1 all"}
+                    </button>
+                    <button
+                      className="round-icon-btn"
+                      onClick={() => void handleDuplicate(r)}
+                      disabled={dupBusy === r.id || busy !== null}
+                      aria-label={`Duplicate ${r.name}`}
+                      title="Duplicate this round (with exercises, zeroed)"
+                    >
+                      {dupBusy === r.id ? (
+                        <span className="spinner spinner-dark" />
+                      ) : (
+                        <CopyIcon size={15} />
+                      )}
+                    </button>
+                    <button
+                      className="round-icon-btn danger-text"
+                      onClick={() => setConfirmRound(r)}
+                      disabled={busy !== null}
+                      aria-label={`Delete ${r.name}`}
+                      title="Delete this round and its exercises"
+                    >
+                      <IconTrash size={15} />
+                    </button>
+                  </span>
+                </div>
+                {r.subs.map((s) => {
+                  const done = s.used >= s.total;
+                  return (
+                    <div className="round-sub" key={s.id}>
+                      <Link className="round-sub-main" href={`/c/${s.id}`}>
+                        <span className="round-sub-bar" aria-hidden>
+                          <span
+                            className="round-sub-fill"
+                            style={{
+                              width: `${clampPct(s.total > 0 ? (s.used / s.total) * 100 : 0)}%`,
+                              background: progressColor(
+                                s.total > 0 ? (s.used / s.total) * 100 : 0,
+                              ),
+                            }}
+                          />
+                        </span>
+                        <span className="round-sub-name">{s.name}</span>
+                      </Link>
+                      <span className="round-sub-nums">
+                        {s.used} / {s.total}
+                        {done ? " 🎉" : ""}
+                      </span>
+                      <button
+                        className="round-sub-btn"
+                        onClick={() => void handleQuickAdd(s)}
+                        disabled={quickBusy === s.id || done}
+                        title={done ? "Target reached" : `+1 ${s.name}`}
+                      >
+                        {quickBusy === s.id ? <span className="spinner spinner-dark" /> : "+1"}
+                      </button>
+                      <button
+                        className="round-icon-btn"
+                        onClick={() => void handleDuplicate(s)}
+                        disabled={dupBusy === s.id || busy !== null}
+                        aria-label={`Duplicate ${s.name}`}
+                        title="Duplicate this exercise (zeroed, same target)"
+                      >
+                        {dupBusy === s.id ? (
+                          <span className="spinner spinner-dark" />
+                        ) : (
+                          <CopyIcon size={13} />
+                        )}
+                      </button>
+                    </div>
+                  );
+                })}
+                <button
+                  className="btn btn-ghost btn-sm round-add"
+                  onClick={() =>
+                    setNewChild({ mode: "exercise", parentId: r.id, parentName: r.name })
+                  }
+                >
+                  + Add exercise
+                </button>
+              </div>
+            );
+          })}
+          <button
+            className="btn btn-ghost btn-sm"
+            onClick={() => setNewChild({ mode: "round", parentId: id, parentName: project.name })}
+          >
+            + New round
           </button>
         </section>
       )}
@@ -458,19 +599,36 @@ export default function CounterDetail({
           onDelete={() => setAskDelete(true)}
         />
       )}
-      {showNewSub && (
+      {newChild && (
         <NewCounterModal
           busy={busy === "newsub"}
-          parentId={id}
-          parentName={project.name}
-          onClose={() => setShowNewSub(false)}
-          onCreate={handleCreateSub}
+          mode={newChild.mode}
+          parentId={newChild.parentId}
+          parentName={newChild.parentName}
+          onClose={() => setNewChild(null)}
+          onCreate={handleCreateChild}
+        />
+      )}
+      {confirmRound && (
+        <ConfirmDialog
+          title="Delete round?"
+          message={`This permanently deletes “${confirmRound.name}”${
+            rounds.find((r) => r.id === confirmRound.id)?.subs.length
+              ? ` and its ${rounds.find((r) => r.id === confirmRound.id)!.subs.length} exercise${
+                  rounds.find((r) => r.id === confirmRound.id)!.subs.length === 1 ? "" : "s"
+                }`
+              : ""
+          }, including all check-in records and uploaded images. This cannot be undone.`}
+          confirmLabel="Delete round"
+          busy={busy === "delete"}
+          onConfirm={() => void handleDeleteRound()}
+          onCancel={() => setConfirmRound(null)}
         />
       )}
       {askReset && (
         <ConfirmDialog
           title="Reset counter?"
-          message={`This sets the count back to 0 and permanently deletes all ${history.length} check-in record${history.length === 1 ? "" : "s"} (including uploaded proof images). This cannot be undone.`}
+          message={`This sets the count back to 0 and permanently deletes all ${history.length} check-in record${history.length === 1 ? "" : "s"}${exerciseCount > 0 ? ` across all ${exerciseCount} exercise${exerciseCount === 1 ? "" : "s"}` : ""} (including uploaded proof images). This cannot be undone.`}
           confirmLabel="Reset everything"
           busy={busy === "reset"}
           onConfirm={() => void handleReset()}
@@ -480,7 +638,7 @@ export default function CounterDetail({
       {askDelete && (
         <ConfirmDialog
           title="Delete counter?"
-          message={`This permanently deletes “${project.name}”${subs.length > 0 ? ` and its ${subs.length} sub-counter${subs.length === 1 ? "" : "s"}` : ""}, including all check-in records and uploaded images. This cannot be undone.`}
+          message={`This permanently deletes “${project.name}”${rounds.length > 0 ? ` with its ${rounds.length} round${rounds.length === 1 ? "" : "s"} and ${exerciseCount} exercise${exerciseCount === 1 ? "" : "s"}` : ""}, including all check-in records and uploaded images. This cannot be undone.`}
           confirmLabel="Delete counter"
           busy={busy === "delete"}
           onConfirm={() => void handleDelete()}

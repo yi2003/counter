@@ -9,17 +9,22 @@ export default function NewCounterModal({
   onCreate,
   parentId,
   parentName,
+  mode,
 }: {
   busy: boolean;
   onClose: () => void;
   onCreate: (name: string, total: number) => void;
   parentId?: string;
   parentName?: string;
+  /** "round" = group under a counter (no total), "exercise" = counter inside a round. */
+  mode?: "round" | "exercise";
 }) {
   const [name, setName] = useState("");
-  const [total, setTotal] = useState("60");
+  const [total, setTotal] = useState(mode === "round" ? "1" : "60");
   const [error, setError] = useState<string | null>(null);
-  const isSub = Boolean(parentId);
+  const isRound = mode === "round";
+  const isExercise = mode === "exercise";
+  const isChild = Boolean(parentId);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -52,9 +57,11 @@ export default function NewCounterModal({
       <div className="modal modal-narrow" role="dialog" aria-modal="true" aria-label="New counter">
         <div className="modal-head">
           <h3>
-            {isSub
-              ? `New sub-counter${parentName ? ` in “${parentName}”` : ""}`
-              : "New counter"}
+            {isRound
+              ? `New round${parentName ? ` in “${parentName}”` : ""}`
+              : isExercise
+                ? `New exercise${parentName ? ` in “${parentName}”` : ""}`
+                : "New counter"}
           </h3>
           <button className="icon-btn" onClick={onClose} aria-label="Close" disabled={busy}>
             <IconClose />
@@ -67,26 +74,28 @@ export default function NewCounterModal({
             type="text"
             value={name}
             maxLength={100}
-            placeholder={isSub ? "e.g. Push-ups" : "e.g. Inhaler, Daily Water…"}
+            placeholder={isRound ? "e.g. Round 1, Day 1…" : isExercise ? "e.g. Front chest push" : "e.g. Inhaler, Daily Water…"}
             onChange={(e) => setName(e.target.value)}
             disabled={busy}
             autoFocus
           />
         </label>
 
-        <label className="field">
-          <span className="field-label">Total target count</span>
-          <input
-            type="number"
-            inputMode="numeric"
-            min={1}
-            max={1000000}
-            step={1}
-            value={total}
-            onChange={(e) => setTotal(e.target.value)}
-            disabled={busy}
-          />
-        </label>
+        {!isRound && (
+          <label className="field">
+            <span className="field-label">Total target count</span>
+            <input
+              type="number"
+              inputMode="numeric"
+              min={1}
+              max={1000000}
+              step={1}
+              value={total}
+              onChange={(e) => setTotal(e.target.value)}
+              disabled={busy}
+            />
+          </label>
+        )}
 
         {error && <p className="form-error">{error}</p>}
 

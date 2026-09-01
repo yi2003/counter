@@ -35,21 +35,31 @@ export async function POST(req: Request) {
       return jsonError(`Counter limit reached (max ${MAX_COUNTERS})`, 409);
     }
 
-    // Optional parent: creates a sub-counter (one level deep only).
+    // Optional parent. Child kind follows the parent:
+    //   parent = top counter → child is a round (rounder group)
+    //   parent = round      → child is an exercise counter
     const parentId = typeof body.parentId === "string" && body.parentId ? body.parentId : null;
+    let isRounder = false;
     if (parentId) {
       const parent = metas.find((m) => m.id === parentId);
       if (!parent) return jsonError("Parent counter not found", 404);
-      if (parent.parentId) return jsonError("Sub-counters cannot have their own sub-counters", 400);
+      if (parent.rounder) {
+        // parent is a round → this is an exercise counter
+      } else if (parent.parentId) {
+        return jsonError("Exercises cannot contain further counters", 400);
+      } else {
+        isRounder = true;
+      }
     }
 
     const meta = {
       id: newCounterId(),
       name,
-      total,
+      total: isRounder ? 1 : total,
       coverImage: null,
       createdAt: new Date().toISOString(),
       parentId,
+      ...(isRounder ? { rounder: true } : {}),
     };
     await store.saveMeta(user.sub, meta);
     await store.setUsed(user.sub, meta.id, 0);

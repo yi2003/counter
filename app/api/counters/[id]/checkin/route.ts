@@ -2,7 +2,7 @@ import { requireUser } from "@/lib/auth";
 import { jsonError, withErrors, withClientRecordImages } from "@/lib/state";
 import { getStore } from "@/lib/store";
 import { cleanImageUrl, cleanNote } from "@/lib/validate";
-import type { CheckinRecord } from "@/lib/types";
+import type { CheckinRecord, CounterMeta } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -20,26 +20,30 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const meta = metas.find((m) => m.id === id);
     if (!meta) return jsonError("Counter not found", 404);
 
-    const used = await store.getUsed(user.sub, id);
-    if (used >= meta.total) {
+    const isRounder = meta.rounder === true;
+
+    let used = await store.getUsed(user.sub, id);
+    if (!isRounder && used >= meta.total) {
       return jsonError("Target already reached", 409);
     }
 
-    const record: CheckinRecord = {
-      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      timestamp: new Date().toISOString(),
-      note: cleanNote(body.note),
-      image: cleanImageUrl(body.image),
-      thumb: cleanImageUrl(body.thumb),
-    };
+    // A rounder check-in has no record of its own — it just +1s its exercises.
+    let record: CheckinRecord | null = null;
+    if (!isRounder) {
+      record = {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        timestamp: new Date().toISOString(),
+        note: cleanNote(body.note),
+        image: cleanImageUrl(body.image),
+        thumb: cleanImageUrl(body.thumb),
+      };
+      used = await store.incrUsed(user.sub, id);
+      await store.pushHistory(user.sub, id, record);
+    }
 
-    const newUsed = await store.incrUsed(user.sub, id);
-    await store.pushHistory(user.sub, id, record);
-
-    // GROUP SEMANTICS: checking in a counter that has sub-counters completes
-    // one round — every direct sub-counter also gets +1. Subs already at
-    // their own target are skipped (reported back to the client).
-    const children = metas.filter((m) => m.parentId === id);
+    // GROUP SEMANTICS (rounders): checking in a round adds +1 to every
+    // exercise inside it. Exercises already at their target are skipped.
+    const children = metas.filter((m) => m.parentId === id && m.rounder !== true);
     const subUpdates: { id: string; used: number }[] = [];
     const skipped: string[] = [];
     for (const child of children) {
@@ -51,38 +55,53 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       const childNewUsed = await store.incrUsed(user.sub, child.id);
       await store.pushHistory(user.sub, child.id, {
         id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        timestamp: record.timestamp,
+        timestamp: record?.timestamp ?? new Date().toISOString(),
         note: null,
         image: null,
         thumb: null,
-        origin: record.id,
+        origin: record?.id,
       });
       subUpdates.push({ id: child.id, used: childNewUsed });
     }
 
-    // PARENT AUTO-ROUND: if this counter belongs to a parent and EVERY
-    // sub-counter of that parent has now caught up (>= parent.used + 1),
-    // the parent completes one round automatically.
+    // PARENT AUTO-ROUND: resolve which (round → counter) pair this check-in
+    // may complete. When EVERY exercise of the round has reached its target
+    // and the counter hasn't counted this round yet, the counter +1s itself.
+    let round: CounterMeta | undefined;
+    let counter: CounterMeta | undefined;
+    if (meta.rounder) {
+      round = meta;
+      counter = metas.find((m) => m.id === meta.parentId);
+    } else if (meta.parentId) {
+      const r = metas.find((m) => m.id === meta.parentId);
+      if (r?.rounder) {
+        round = r;
+        counter = metas.find((m) => m.id === r.parentId);
+      }
+    }
+
     let parentUpdate: { id: string; used: number } | undefined;
-    if (meta.parentId) {
-      const parent = metas.find((m) => m.id === meta.parentId);
-      if (parent) {
-        const parentUsed = await store.getUsed(user.sub, parent.id);
-        if (parentUsed < parent.total) {
-          const siblings = metas.filter((m) => m.parentId === parent.id);
-          const sibUsed = await Promise.all(
-            siblings.map(async (s) => ({ s, u: await store.getUsed(user.sub, s.id) })),
-          );
-          if (sibUsed.every(({ u }) => u >= parentUsed + 1)) {
-            const parentNewUsed = await store.incrUsed(user.sub, parent.id);
-            await store.pushHistory(user.sub, parent.id, {
+    if (round && counter) {
+      const exercises = metas.filter((m) => m.parentId === round!.id && m.rounder !== true);
+      const usages = await Promise.all(
+        exercises.map(async (s) => ({ t: s.total, u: await store.getUsed(user.sub, s.id) })),
+      );
+      if (usages.length > 0 && usages.every(({ t, u }) => u >= t)) {
+        const counterUsed = await store.getUsed(user.sub, counter.id);
+        if (counterUsed < counter.total) {
+          const marker = `round:${round.id}`;
+          const counterHistory = await store.getHistory(user.sub, counter.id);
+          if (!counterHistory.some((r) => r.origin === marker)) {
+            const counterNewUsed = await store.incrUsed(user.sub, counter.id);
+            await store.pushHistory(user.sub, counter.id, {
               id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-              timestamp: record.timestamp,
-              note: "Auto — all sub-counters completed",
+              timestamp: record?.timestamp ?? new Date().toISOString(),
+              note: `Auto — ${round.name} completed`,
               image: null,
               thumb: null,
+              origin: marker,
             });
-            parentUpdate = { id: parent.id, used: parentNewUsed };
+            parentUpdate = { id: counter.id, used: counterNewUsed };
           }
         }
       }
@@ -91,8 +110,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     // Serve the proxy URL (not the raw private blob URL) so the new record
     // renders immediately — same rewriting as buildCounterState.
     return Response.json({
-      used: newUsed,
-      record: withClientRecordImages([record])[0],
+      used,
+      record: record ? withClientRecordImages([record])[0] : null,
       subUpdates,
       skipped,
       parentUpdate,

@@ -1138,6 +1138,175 @@ button.counter-card:hover,
   color: var(--muted);
 }
 
+/* ------------------------------ round groups ----------------------------- */
+
+.round-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px;
+  margin-bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: #fbfcfe;
+}
+
+.round-card.round-done {
+  border-color: #bfe3c4;
+  background: #f4fbf5;
+}
+
+.round-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.round-name {
+  font-weight: 600;
+  font-size: 14.5px;
+  flex: 1;
+  min-width: 80px;
+}
+
+.round-progress {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.round-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.round-pill {
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+}
+
+.round-pill:hover:not(:disabled) {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.round-pill:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.round-icon-btn {
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--muted);
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.round-icon-btn:hover:not(:disabled) {
+  color: var(--text);
+  border-color: #c9d4e8;
+}
+
+.round-icon-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.round-sub {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+}
+
+.round-sub-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-decoration: none;
+  color: var(--text);
+  padding: 4px 0;
+}
+
+.round-sub-bar {
+  display: block;
+  height: 4px;
+  width: 100%;
+  background: #e8edf7;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.round-sub-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.4s ease, background 0.3s ease;
+}
+
+.round-sub-name {
+  font-size: 13.5px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.round-sub-nums {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.round-sub-btn {
+  width: 40px;
+  height: 34px;
+  flex: 0 0 40px;
+  border: none;
+  border-radius: 10px;
+  background: var(--primary);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.round-sub-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.round-add {
+  align-self: flex-start;
+}
+
 /* sub-counter cards */
 
 .sub-card {

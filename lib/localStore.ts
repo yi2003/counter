@@ -8,6 +8,7 @@ import {
   localDuplicateCounter,
   localGetCounter,
   localListSummaries,
+  localMigrateRounds,
   localReset,
   localUndo,
   localUpdateCounter,
@@ -181,6 +182,7 @@ export async function localApi<T>(url: string, init?: RequestInit): Promise<T> {
     const action = segs[3];
 
     if (!action && method === "GET") {
+      if (localMigrateRounds(data, id)) writeData(data); // pre-round data → wrap into Round 1
       const state = localGetCounter(data, id);
       if (!state) throw new Error("Counter not found");
       return (await resolveState(state)) as T;
@@ -204,7 +206,7 @@ export async function localApi<T>(url: string, init?: RequestInit): Promise<T> {
       writeData(data);
       return {
         used,
-        record: await resolveRecord(record),
+        record: record ? await resolveRecord(record) : null,
         subUpdates,
         skipped,
         parentUpdate,
