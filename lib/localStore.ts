@@ -9,6 +9,7 @@ import {
   localGetCounter,
   localListSummaries,
   localMigrateRounds,
+  localCopyToRound,
   localReset,
   localUndo,
   localUpdateCounter,
@@ -225,10 +226,20 @@ export async function localApi<T>(url: string, init?: RequestInit): Promise<T> {
       return { ok: true, subIds } as T;
     }
     if (action === "duplicate" && method === "POST") {
-      const { id: newId } = localDuplicateCounter(data, id);
-      writeData(data);
-      const counters = await Promise.all(localListSummaries(data).map(resolveSummary));
-      return { counters, id: newId } as T;
+      const body = bodyOf<{ parentId?: string }>(init);
+      let result: { counters: CounterSummary[]; id: string | null; created?: number };
+      if (body?.parentId) {
+        const { id: newId, created } = localCopyToRound(data, id, body.parentId);
+        writeData(data);
+        const counters = await Promise.all(localListSummaries(data).map(resolveSummary));
+        result = { counters, id: newId, created };
+      } else {
+        const { id: newId } = localDuplicateCounter(data, id);
+        writeData(data);
+        const counters = await Promise.all(localListSummaries(data).map(resolveSummary));
+        result = { counters, id: newId };
+      }
+      return result as T;
     }
   }
 

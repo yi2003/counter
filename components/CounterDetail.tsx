@@ -15,7 +15,7 @@ import Lightbox from "@/components/Lightbox";
 import NewCounterModal from "@/components/NewCounterModal";
 import ToastHost, { useToasts } from "@/components/ToastHost";
 import UserChip from "@/components/UserChip";
-import { IconBack, IconGear, IconTrash } from "@/components/icons";
+import { IconBack, IconGear, IconTrash, IconClose } from "@/components/icons";
 import { CopyIcon } from "@/components/CounterCard";
 import { clampPct, progressColor } from "@/lib/progress";
 
@@ -39,6 +39,8 @@ export default function CounterDetail({
   const [busy, setBusy] = useState<Busy>(null);
   const [quickBusy, setQuickBusy] = useState<string | null>(null);
   const [dupBusy, setDupBusy] = useState<string | null>(null);
+  const [copySource, setCopySource] = useState<{ id: string; name: string; kind: "sub" | "round" } | null>(null);
+  const [copyBusy, setCopyBusy] = useState<string | null>(null);
   const [rounds, setRounds] = useState<RoundGroup[]>([]);
   const [parent, setParent] = useState<CounterSummary | null>(null);
   const [showCheckin, setShowCheckin] = useState(false);
@@ -299,6 +301,30 @@ export default function CounterDetail({
     }
   }
 
+  /** "Copy to round": copies the source (sub-counter or whole round set) into the chosen round. */
+  async function handleCopyToRound(targetId: string, targetName: string) {
+    if (!copySource) return;
+    setCopyBusy(targetId);
+    try {
+      const res = await api<{ created?: number }>(`/api/counters/${enc(copySource.id)}/duplicate`, {
+        method: "POST",
+        body: JSON.stringify({ parentId: targetId }),
+      });
+      const n = res.created ?? 1;
+      push(
+        n > 1
+          ? `Copied ${n} sub-counters to “${targetName}” ✨`
+          : `Copied “${copySource.name}” to “${targetName}” ✨`,
+      );
+      setCopySource(null);
+      await load();
+    } catch (e) {
+      push(errMsg(e), "error");
+    } finally {
+      setCopyBusy(null);
+    }
+  }
+
   if (!state) {
     return (
       <main className="container center-screen">
@@ -474,6 +500,14 @@ export default function CounterDetail({
                       {quickBusy === r.id ? <span className="spinner spinner-dark" /> : "+1 all"}
                     </button>
                     <button
+                      className="round-pill"
+                      onClick={() => setCopySource({ id: r.id, name: r.name, kind: "round" })}
+                      disabled={busy !== null}
+                      title="Copy this round's sub-counters into another round"
+                    >
+                      Copy to…
+                    </button>
+                    <button
                       className="round-icon-btn"
                       onClick={() => void handleDuplicate(r)}
                       disabled={dupBusy === r.id || busy !== null}
@@ -529,12 +563,12 @@ export default function CounterDetail({
                       </button>
                       <button
                         className="round-icon-btn"
-                        onClick={() => void handleDuplicate(s)}
-                        disabled={dupBusy === s.id || busy !== null}
-                        aria-label={`Duplicate ${s.name}`}
-                        title="Duplicate this sub-counter (zeroed, same target)"
+                        onClick={() => setCopySource({ id: s.id, name: s.name, kind: "sub" })}
+                        disabled={copyBusy === s.id || busy !== null}
+                        aria-label={`Copy ${s.name} to round`}
+                        title="Copy this sub-counter to a round"
                       >
-                        {dupBusy === s.id ? (
+                        {copyBusy === s.id ? (
                           <span className="spinner spinner-dark" />
                         ) : (
                           <CopyIcon size={13} />
@@ -624,6 +658,62 @@ export default function CounterDetail({
           onConfirm={() => void handleDeleteRound()}
           onCancel={() => setConfirmRound(null)}
         />
+      )}
+      {copySource && (
+        <div
+          className="overlay"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget && copyBusy === null) setCopySource(null);
+          }}
+        >
+          <div className="modal modal-narrow" role="dialog" aria-modal="true" aria-label="Copy to round">
+            <div className="modal-head">
+              <h3>
+                {copySource.kind === "sub"
+                  ? `Copy “${copySource.name}” to round`
+                  : `Copy sub-counters of “${copySource.name}” to…`}
+              </h3>
+              <button
+                className="icon-btn"
+                onClick={() => setCopySource(null)}
+                aria-label="Close"
+                disabled={copyBusy !== null}
+              >
+                <IconClose />
+              </button>
+            </div>
+            {(() => {
+              const targets = rounds.filter(
+                (r) => copySource.kind === "sub" || r.id !== copySource.id,
+              );
+              if (targets.length === 0) {
+                return (
+                  <p className="muted copy-empty">
+                    No other rounds yet — create a round first, then copy into it.
+                  </p>
+                );
+              }
+              return (
+                <div className="copy-targets">
+                  {targets.map((t) => (
+                    <button
+                      key={t.id}
+                      className="copy-target"
+                      onClick={() => void handleCopyToRound(t.id, t.name)}
+                      disabled={copyBusy !== null}
+                    >
+                      <span className="copy-target-name">{t.name}</span>
+                      <span className="copy-target-meta">
+                        {t.subs.length} sub-counter{t.subs.length === 1 ? "" : "s"}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              );
+            })()}
+            <p className="muted copy-hint">Copies start at 0 and keep the same target.</p>
+          </div>
+        </div>
       )}
       {askReset && (
         <ConfirmDialog

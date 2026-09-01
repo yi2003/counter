@@ -268,6 +268,72 @@ export function localDuplicateCounter(data: LocalData, id: string): { id: string
   return { id: newId };
 }
 
+/** First free variant of `name` among the taken names (" (copy)", " (copy 2)"…). */
+export function uniqueName(name: string, taken: Set<string>): string {
+  if (!taken.has(name)) return name;
+  if (!taken.has(`${name} (copy)`)) return `${name} (copy)`;
+  for (let n = 2; ; n++) {
+    const candidate = `${name} (copy ${n})`;
+    if (!taken.has(candidate)) return candidate;
+  }
+}
+
+/**
+ * "Copy to round": copies a sub-counter — or, for a round, ALL of its
+ * sub-counters — into the target round, zeroed, keeping names (uniquified on
+ * collision). Mirrors duplicate-with-parentId on the server.
+ */
+export function localCopyToRound(
+  data: LocalData,
+  id: string,
+  targetId: string,
+): { id: string | null; created: number } {
+  const meta = data.counters.find((c) => c.id === id);
+  if (!meta) throw new Error("Counter not found");
+  const target = data.counters.find((c) => c.id === targetId);
+  if (!target) throw new Error("Target round not found");
+  if (target.rounder !== true) throw new Error("Copy target must be a round");
+
+  let sources: CounterMeta[];
+  if (meta.rounder === true) {
+    if (targetId === id) throw new Error("Cannot copy a round into itself");
+    sources = data.counters.filter((c) => c.parentId === id && c.rounder !== true);
+  } else {
+    const sourceParent = data.counters.find((c) => c.id === meta.parentId);
+    if (!sourceParent?.rounder) {
+      throw new Error("Only sub-counters inside a round can be copied to a round");
+    }
+    sources = [meta];
+  }
+
+  if (data.counters.length + sources.length > MAX_LOCAL_COUNTERS) {
+    throw new Error(`Counter limit reached (max ${MAX_LOCAL_COUNTERS})`);
+  }
+
+  const taken = new Set(
+    data.counters.filter((c) => c.parentId === targetId).map((c) => c.name),
+  );
+  const now = new Date().toISOString();
+  let lastId: string | null = null;
+  for (const c of sources) {
+    const newId = genId();
+    lastId = newId;
+    const name = uniqueName(c.name, taken);
+    taken.add(name);
+    data.counters.push({
+      ...c,
+      id: newId,
+      parentId: targetId,
+      name,
+      coverImage: null,
+      createdAt: now,
+    });
+    data.used[newId] = 0;
+    data.history[newId] = [];
+  }
+  return { id: lastId, created: sources.length };
+}
+
 export function localCheckin(
   data: LocalData,
   id: string,
