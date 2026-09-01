@@ -41,6 +41,8 @@ export default function CounterDetail({
   const [dupBusy, setDupBusy] = useState<string | null>(null);
   const [copySource, setCopySource] = useState<{ id: string; name: string; kind: "sub" | "round" } | null>(null);
   const [copyBusy, setCopyBusy] = useState<string | null>(null);
+  const [confirmSub, setConfirmSub] = useState<CounterSummary | null>(null);
+  const [delBusy, setDelBusy] = useState<string | null>(null);
   const [rounds, setRounds] = useState<RoundGroup[]>([]);
   const [parent, setParent] = useState<CounterSummary | null>(null);
   const [showCheckin, setShowCheckin] = useState(false);
@@ -263,6 +265,22 @@ export default function CounterDetail({
       push(errMsg(e), "error");
     } finally {
       setBusy(null);
+    }
+  }
+
+  async function handleDeleteSub() {
+    if (!confirmSub) return;
+    const target = confirmSub;
+    setDelBusy(target.id);
+    try {
+      await api(`/api/counters/${enc(target.id)}`, { method: "DELETE" });
+      setConfirmSub(null);
+      push(`Sub-counter “${target.name}” deleted`, "warning");
+      await load();
+    } catch (e) {
+      push(errMsg(e), "error");
+    } finally {
+      setDelBusy(null);
     }
   }
 
@@ -574,6 +592,19 @@ export default function CounterDetail({
                           <CopyIcon size={13} />
                         )}
                       </button>
+                      <button
+                        className="round-icon-btn danger-text"
+                        onClick={() => setConfirmSub(s)}
+                        disabled={delBusy === s.id || busy !== null}
+                        aria-label={`Delete ${s.name}`}
+                        title="Delete this sub-counter (and its history)"
+                      >
+                        {delBusy === s.id ? (
+                          <span className="spinner spinner-dark" />
+                        ) : (
+                          <IconTrash size={13} />
+                        )}
+                      </button>
                     </div>
                   );
                 })}
@@ -714,6 +745,16 @@ export default function CounterDetail({
             <p className="muted copy-hint">Copies start at 0 and keep the same target.</p>
           </div>
         </div>
+      )}
+      {confirmSub && (
+        <ConfirmDialog
+          title="Delete sub-counter?"
+          message={`This permanently deletes “${confirmSub.name}” with all of its ${confirmSub.used} check-in record${confirmSub.used === 1 ? "" : "s"} (including uploaded proof images). This cannot be undone.`}
+          confirmLabel="Delete sub-counter"
+          busy={delBusy !== null}
+          onConfirm={() => void handleDeleteSub()}
+          onCancel={() => setConfirmSub(null)}
+        />
       )}
       {askReset && (
         <ConfirmDialog
