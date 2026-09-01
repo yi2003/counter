@@ -156,6 +156,34 @@ export function localDeleteCounter(
   return { removedIds, imageRefs };
 }
 
+/** Local duplicate of a counter (and its sub-counters) — zeroed, name + " (copy)". */
+export function localDuplicateCounter(data: LocalData, id: string): { id: string } {
+  const meta = data.counters.find((c) => c.id === id);
+  if (!meta) throw new Error("Counter not found");
+  const children = data.counters.filter((c) => c.parentId === id);
+  if (data.counters.length + 1 + children.length > MAX_LOCAL_COUNTERS) {
+    throw new Error(`Counter limit reached (max ${MAX_LOCAL_COUNTERS})`);
+  }
+  const now = new Date().toISOString();
+  const newId = genId();
+  data.counters.push({
+    ...meta,
+    id: newId,
+    name: `${meta.name} (copy)`,
+    coverImage: null,
+    createdAt: now,
+  });
+  data.used[newId] = 0;
+  data.history[newId] = [];
+  for (const child of children) {
+    const childId = genId();
+    data.counters.push({ ...child, id: childId, parentId: newId, coverImage: null, createdAt: now });
+    data.used[childId] = 0;
+    data.history[childId] = [];
+  }
+  return { id: newId };
+}
+
 export function localCheckin(
   data: LocalData,
   id: string,

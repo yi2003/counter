@@ -35,6 +35,7 @@ export default function CounterDetail({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [busy, setBusy] = useState<Busy>(null);
   const [quickBusy, setQuickBusy] = useState<string | null>(null);
+  const [dupBusy, setDupBusy] = useState<string | null>(null);
   const [subs, setSubs] = useState<CounterSummary[]>([]);
   const [parent, setParent] = useState<CounterSummary | null>(null);
   const [showCheckin, setShowCheckin] = useState(false);
@@ -235,6 +236,19 @@ export default function CounterDetail({
     }
   }
 
+  async function handleDuplicateSub(sub: CounterSummary) {
+    setDupBusy(sub.id);
+    try {
+      await api(`/api/counters/${enc(sub.id)}/duplicate`, { method: "POST" });
+      push(`Duplicated ${sub.name} ✨`);
+      await load();
+    } catch (e) {
+      push(errMsg(e), "error");
+    } finally {
+      setDupBusy(null);
+    }
+  }
+
   if (!state) {
     return (
       <main className="container center-screen">
@@ -390,7 +404,9 @@ export default function CounterDetail({
                   key={s.id}
                   sub={s}
                   busy={quickBusy === s.id}
+                  dupBusy={dupBusy === s.id}
                   onQuickAdd={() => void handleQuickAdd(s)}
+                  onDuplicate={() => void handleDuplicateSub(s)}
                 />
               ))}
             </div>

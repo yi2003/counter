@@ -1160,8 +1160,63 @@ button.counter-card:hover,
   text-align: center;
 }
 
-.sub-add {
+.sub-actions {
+  display: flex;
+  gap: 6px;
   width: 100%;
+}
+
+.sub-add {
+  flex: 1;
+  width: auto;
+}
+
+.sub-copy {
+  flex: 0 0 40px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--muted);
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.sub-copy:hover {
+  color: var(--text);
+  border-color: #c9d4e8;
+}
+
+/* copy button on home counter cards */
+.counter-card-wrap {
+  position: relative;
+}
+
+.card-copy {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.card-copy:hover {
+  background: #eef2fa;
+  color: var(--text);
 }
 
 .mini-bar {

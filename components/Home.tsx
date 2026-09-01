@@ -60,6 +60,19 @@ export default function Home({
     }
   }
 
+  async function handleDuplicate(id: string) {
+    try {
+      const res = await api<{ counters: CounterSummary[] }>(
+        `/api/counters/${encodeURIComponent(id)}/duplicate`,
+        { method: "POST" },
+      );
+      setCounters(res.counters.filter((c) => !c.parentId)); // top-level only
+      push("Duplicated — open it to rename ✨");
+    } catch (e) {
+      push(errMsg(e), "error");
+    }
+  }
+
   if (!counters) {
     return (
       <main className="container center-screen">
@@ -134,7 +147,7 @@ export default function Home({
 
       <section className="counter-grid">
         {counters.map((c) => (
-          <CounterCard key={c.id} counter={c} />
+          <CounterCard key={c.id} counter={c} onDuplicate={(id) => void handleDuplicate(id)} />
         ))}
         <button className="counter-card new-card" onClick={() => setShowNew(true)}>
           + New counter

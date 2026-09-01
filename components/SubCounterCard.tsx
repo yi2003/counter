@@ -3,19 +3,24 @@
 import { useRouter } from "next/navigation";
 import { clampPct, progressColor } from "@/lib/progress";
 import type { CounterSummary } from "@/lib/types";
+import { CopyIcon } from "@/components/CounterCard";
 
 /**
  * Sub-counter card inside a counter's detail page:
- * tap the card to open it, or use "+1" for a quick check-in without a note.
+ * tap the card to open it, "+1" for a quick check-in, "⧉" to duplicate it.
  */
 export default function SubCounterCard({
   sub,
   busy,
+  dupBusy,
   onQuickAdd,
+  onDuplicate,
 }: {
   sub: CounterSummary;
   busy: boolean;
+  dupBusy?: boolean;
   onQuickAdd: () => void;
+  onDuplicate?: () => void;
 }) {
   const router = useRouter();
   const pct = sub.total > 0 ? (sub.used / sub.total) * 100 : 0;
@@ -31,15 +36,28 @@ export default function SubCounterCard({
           {done ? " 🎉" : ""}
         </span>
       </button>
-      <button
-        className="btn btn-sm btn-primary sub-add"
-        onClick={onQuickAdd}
-        disabled={busy || done}
-        aria-label={`Quick check-in for ${sub.name}`}
-        title={done ? "Target reached" : "Quick check-in (+1)"}
-      >
-        {busy ? <span className="spinner" /> : "+1"}
-      </button>
+      <div className="sub-actions">
+        <button
+          className="btn btn-sm btn-primary sub-add"
+          onClick={onQuickAdd}
+          disabled={busy || done}
+          aria-label={`Quick check-in for ${sub.name}`}
+          title={done ? "Target reached" : "Quick check-in (+1)"}
+        >
+          {busy ? <span className="spinner" /> : "+1"}
+        </button>
+        {onDuplicate && (
+          <button
+            className="sub-copy"
+            onClick={onDuplicate}
+            disabled={dupBusy}
+            aria-label={`Duplicate ${sub.name}`}
+            title="Duplicate this sub-counter (zeroed, same target)"
+          >
+            {dupBusy ? <span className="spinner" /> : <CopyIcon size={15} />}
+          </button>
+        )}
+      </div>
     </div>
   );
 }

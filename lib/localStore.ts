@@ -5,6 +5,7 @@ import {
   localCheckin,
   localCreateCounter,
   localDeleteCounter,
+  localDuplicateCounter,
   localGetCounter,
   localListSummaries,
   localReset,
@@ -220,6 +221,12 @@ export async function localApi<T>(url: string, init?: RequestInit): Promise<T> {
       writeData(data);
       await idbDelMany(imageRefs.filter((r) => r.startsWith(REF_PREFIX)).map((r) => r.slice(REF_PREFIX.length)));
       return { ok: true, subIds } as T;
+    }
+    if (action === "duplicate" && method === "POST") {
+      const { id: newId } = localDuplicateCounter(data, id);
+      writeData(data);
+      const counters = await Promise.all(localListSummaries(data).map(resolveSummary));
+      return { counters, id: newId } as T;
     }
   }
 
