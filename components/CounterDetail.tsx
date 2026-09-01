@@ -15,7 +15,7 @@ import Lightbox from "@/components/Lightbox";
 import NewCounterModal from "@/components/NewCounterModal";
 import ToastHost, { useToasts } from "@/components/ToastHost";
 import UserChip from "@/components/UserChip";
-import { IconBack, IconGear, IconTrash, IconClose } from "@/components/icons";
+import { IconBack, IconGear, IconTrash, IconClose, IconPencil } from "@/components/icons";
 import { CopyIcon } from "@/components/CounterCard";
 import { clampPct, progressColor } from "@/lib/progress";
 
@@ -43,6 +43,9 @@ export default function CounterDetail({
   const [copyBusy, setCopyBusy] = useState<string | null>(null);
   const [confirmSub, setConfirmSub] = useState<CounterSummary | null>(null);
   const [delBusy, setDelBusy] = useState<string | null>(null);
+  const [renameTarget, setRenameTarget] = useState<CounterSummary | null>(null);
+  const [renameName, setRenameName] = useState("");
+  const [renameBusy, setRenameBusy] = useState(false);
   const [rounds, setRounds] = useState<RoundGroup[]>([]);
   const [parent, setParent] = useState<CounterSummary | null>(null);
   const [showCheckin, setShowCheckin] = useState(false);
@@ -281,6 +284,31 @@ export default function CounterDetail({
       push(errMsg(e), "error");
     } finally {
       setDelBusy(null);
+    }
+  }
+
+  function openRename(target: CounterSummary) {
+    setRenameTarget(target);
+    setRenameName(target.name);
+  }
+
+  async function handleRename() {
+    if (!renameTarget) return;
+    const name = renameName.trim();
+    if (!name) return;
+    setRenameBusy(true);
+    try {
+      await api(`/api/counters/${enc(renameTarget.id)}`, {
+        method: "PUT",
+        body: JSON.stringify({ name }),
+      });
+      setRenameTarget(null);
+      push("Renamed");
+      await load();
+    } catch (e) {
+      push(errMsg(e), "error");
+    } finally {
+      setRenameBusy(false);
     }
   }
 
@@ -527,6 +555,15 @@ export default function CounterDetail({
                     </button>
                     <button
                       className="round-icon-btn"
+                      onClick={() => openRename(r)}
+                      disabled={busy !== null}
+                      aria-label={`Rename ${r.name}`}
+                      title="Rename this round"
+                    >
+                      <IconPencil size={14} />
+                    </button>
+                    <button
+                      className="round-icon-btn"
                       onClick={() => void handleDuplicate(r)}
                       disabled={dupBusy === r.id || busy !== null}
                       aria-label={`Duplicate ${r.name}`}
@@ -591,6 +628,15 @@ export default function CounterDetail({
                         ) : (
                           <CopyIcon size={13} />
                         )}
+                      </button>
+                      <button
+                        className="round-icon-btn"
+                        onClick={() => openRename(s)}
+                        disabled={busy !== null}
+                        aria-label={`Rename ${s.name}`}
+                        title="Rename this sub-counter"
+                      >
+                        <IconPencil size={13} />
                       </button>
                       <button
                         className="round-icon-btn danger-text"
@@ -755,6 +801,55 @@ export default function CounterDetail({
           onConfirm={() => void handleDeleteSub()}
           onCancel={() => setConfirmSub(null)}
         />
+      )}
+      {renameTarget && (
+        <div
+          className="overlay"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget && !renameBusy) setRenameTarget(null);
+          }}
+        >
+          <div className="modal modal-narrow" role="dialog" aria-modal="true" aria-label="Rename">
+            <div className="modal-head">
+              <h3>Rename</h3>
+              <button
+                className="icon-btn"
+                onClick={() => setRenameTarget(null)}
+                aria-label="Close"
+                disabled={renameBusy}
+              >
+                <IconClose />
+              </button>
+            </div>
+            <label className="field">
+              <span className="field-label">Name</span>
+              <input
+                type="text"
+                value={renameName}
+                maxLength={100}
+                onChange={(e) => setRenameName(e.target.value)}
+                disabled={renameBusy}
+                autoFocus
+                onFocus={(e) => e.currentTarget.select()}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && renameName.trim()) void handleRename();
+                }}
+              />
+            </label>
+            <div className="modal-foot">
+              <button className="btn btn-ghost" onClick={() => setRenameTarget(null)} disabled={renameBusy}>
+                Cancel
+              </button>
+              <button
+                className="btn btn-primary"
+                onClick={() => void handleRename()}
+                disabled={renameBusy || !renameName.trim()}
+              >
+                {renameBusy ? <span className="spinner" /> : "Save"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
       {askReset && (
         <ConfirmDialog

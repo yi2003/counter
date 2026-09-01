@@ -62,6 +62,14 @@ export function IconTrash({ size = 16 }: IconProps) {
   );
 }
 
+export function IconPencil({ size = 16 }: IconProps) {
+  return (
+    <svg {...base(size)}>
+      <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+    </svg>
+  );
+}
+
 export function IconBack({ size = 20 }: IconProps) {
   return (
     <svg {...base(size)}>
