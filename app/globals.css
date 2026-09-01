@@ -1131,6 +1131,13 @@ button.counter-card:hover,
   font-size: 12px;
 }
 
+.subs-hint {
+  margin: -4px 0 10px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
 /* sub-counter cards */
 
 .sub-card {

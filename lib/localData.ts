@@ -54,6 +54,10 @@ export function localListSummaries(data: LocalData): CounterSummary[] {
   }));
 }
 
+export function genId(): string {
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 export function localCreateCounter(
   data: LocalData,
   input: { name: string; total: number; parentId?: string | null },
@@ -74,7 +78,7 @@ export function localCreateCounter(
     if (parent.parentId) throw new Error("Sub-counters cannot have their own sub-counters");
     parentId = parent.id;
   }
-  const id = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  const id = genId();
   const meta: CounterMeta = { name, total, coverImage: null, id, createdAt: new Date().toISOString(), parentId };
   data.counters.push(meta);
   data.used[id] = 0;
@@ -156,13 +160,18 @@ export function localCheckin(
   data: LocalData,
   id: string,
   input: { note?: string | null; image?: string | null; thumb?: string | null },
-): { used: number; record: CheckinRecord } {
+): {
+  used: number;
+  record: CheckinRecord;
+  subUpdates: { id: string; used: number }[];
+  skipped: string[];
+} {
   const meta = data.counters.find((c) => c.id === id);
   if (!meta) throw new Error("Counter not found");
   const used = data.used[id] ?? 0;
   if (used >= meta.total) throw new Error("Target already reached");
   const record: CheckinRecord = {
-    id: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+    id: genId(),
     timestamp: new Date().toISOString(),
     note: typeof input.note === "string" && input.note.trim() ? input.note.trim() : null,
     image: input.image ?? null,
@@ -170,10 +179,38 @@ export function localCheckin(
   };
   data.used[id] = used + 1;
   data.history[id] = [record, ...(data.history[id] ?? [])];
-  return { used: data.used[id], record };
+
+  // GROUP SEMANTICS: one check-in of the parent = one round; every direct
+  // sub-counter also gets +1 (skipping subs already at their own target).
+  const subUpdates: { id: string; used: number }[] = [];
+  const skipped: string[] = [];
+  for (const child of data.counters.filter((c) => c.parentId === id)) {
+    const childUsed = data.used[child.id] ?? 0;
+    if (childUsed >= child.total) {
+      skipped.push(child.name);
+      continue;
+    }
+    data.used[child.id] = childUsed + 1;
+    data.history[child.id] = [
+      {
+        id: genId(),
+        timestamp: record.timestamp,
+        note: null,
+        image: null,
+        thumb: null,
+        origin: record.id,
+      },
+      ...(data.history[child.id] ?? []),
+    ];
+    subUpdates.push({ id: child.id, used: data.used[child.id] });
+  }
+  return { used: data.used[id], record, subUpdates, skipped };
 }
 
-export function localUndo(data: LocalData, id: string): { used: number; imageRefs: string[] } {
+export function localUndo(
+  data: LocalData,
+  id: string,
+): { used: number; imageRefs: string[]; subUpdates: { id: string; used: number }[] } {
   const meta = data.counters.find((c) => c.id === id);
   if (!meta) throw new Error("Counter not found");
   const history = data.history[id] ?? [];
@@ -184,10 +221,25 @@ export function localUndo(data: LocalData, id: string): { used: number; imageRef
   if (removed.thumb) imageRefs.push(removed.thumb);
   data.history[id] = history.slice(1);
   data.used[id] = Math.max(0, (data.used[id] ?? 1) - 1);
-  return { used: data.used[id], imageRefs };
+
+  // GROUP SEMANTICS: undoing a round also removes the auto-records it
+  // created in each sub-counter (matched by origin tag).
+  const subUpdates: { id: string; used: number }[] = [];
+  for (const child of data.counters.filter((c) => c.parentId === id)) {
+    const childHistory = data.history[child.id] ?? [];
+    const idx = childHistory.findIndex((r) => r.origin === removed.id);
+    if (idx === -1) continue;
+    data.history[child.id] = childHistory.filter((_, i) => i !== idx);
+    data.used[child.id] = Math.max(0, (data.used[child.id] ?? 1) - 1);
+    subUpdates.push({ id: child.id, used: data.used[child.id] });
+  }
+  return { used: data.used[id], imageRefs, subUpdates };
 }
 
-export function localReset(data: LocalData, id: string): { imageRefs: string[] } {
+export function localReset(
+  data: LocalData,
+  id: string,
+): { imageRefs: string[]; subIds: string[] } {
   const meta = data.counters.find((c) => c.id === id);
   if (!meta) throw new Error("Counter not found");
   const imageRefs: string[] = [];
@@ -197,5 +249,16 @@ export function localReset(data: LocalData, id: string): { imageRefs: string[] }
   }
   data.history[id] = [];
   data.used[id] = 0;
-  return { imageRefs };
+  // GROUP SEMANTICS: resetting a counter resets its sub-counters too.
+  const subIds: string[] = [];
+  for (const child of data.counters.filter((c) => c.parentId === id)) {
+    for (const r of data.history[child.id] ?? []) {
+      if (r.image) imageRefs.push(r.image);
+      if (r.thumb) imageRefs.push(r.thumb);
+    }
+    data.history[child.id] = [];
+    data.used[child.id] = 0;
+    subIds.push(child.id);
+  }
+  return { imageRefs, subIds };
 }

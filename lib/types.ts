@@ -29,6 +29,8 @@ export interface CheckinRecord {
   note: string | null;
   image: string | null; // view image URL (≤800px, Vercel Blob or local dev path)
   thumb?: string | null; // small thumbnail URL (≤240px) for the history list
+  /** Set on auto-created sub-counter records: the parent round record's id. */
+  origin?: string;
 }
 
 export interface AppState {

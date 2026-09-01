@@ -30,6 +30,8 @@ export interface CounterStore {
   pushHistory(userId: string, id: string, r: CheckinRecord): Promise<void>;
   popHistory(userId: string, id: string): Promise<CheckinRecord | null>;
   getHistory(userId: string, id: string): Promise<CheckinRecord[]>;
+  /** Replaces the whole history list (newest first) — used for surgical undo. */
+  setHistory(userId: string, id: string, records: CheckinRecord[]): Promise<void>;
   clearHistory(userId: string, id: string): Promise<void>;
   /** Deletes the counter's meta entry plus its used/history data. */
   destroyCounter(userId: string, id: string): Promise<void>;
@@ -110,6 +112,13 @@ function createKvStore(kv: KvClient): CounterStore {
     },
     async getHistory(uid, cid) {
       return await kv.lrange<CheckinRecord>(historyKey(uid, cid), 0, -1);
+    },
+    async setHistory(uid, cid, records) {
+      // Lists are newest-first: rebuild by pushing oldest → newest.
+      await kv.del(historyKey(uid, cid));
+      for (let i = records.length - 1; i >= 0; i--) {
+        await kv.lpush(historyKey(uid, cid), records[i]);
+      }
     },
     async clearHistory(uid, cid) {
       await kv.del(historyKey(uid, cid));
@@ -277,6 +286,16 @@ function createLocalStore(): CounterStore {
     },
     async getHistory(uid, cid) {
       return readLocal().users[uid]?.counters[cid]?.history ?? [];
+    },
+    async setHistory(uid, cid, records) {
+      await serialized(() => {
+        const d = readLocal();
+        const c = d.users[uid]?.counters[cid];
+        if (c) {
+          c.history = records;
+          writeLocal(d);
+        }
+      });
     },
     async clearHistory(uid, cid) {
       await serialized(() => {

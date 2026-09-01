@@ -80,15 +80,32 @@ export default function CounterDetail({
         image = up.url;
         thumb = up.thumbUrl;
       }
-      const res = await api<{ used: number; record: CheckinRecord }>(
-        `/api/counters/${enc(id)}/checkin`,
-        { method: "POST", body: JSON.stringify({ note, image, thumb }) },
-      );
+      const res = await api<{
+        used: number;
+        record: CheckinRecord;
+        subUpdates?: { id: string; used: number }[];
+        skipped?: string[];
+      }>(`/api/counters/${enc(id)}/checkin`, {
+        method: "POST",
+        body: JSON.stringify({ note, image, thumb }),
+      });
       setState((s) => (s ? { ...s, used: res.used, history: [res.record, ...s.history] } : s));
+      if (res.subUpdates?.length) {
+        setSubs((list) =>
+          list.map((s) => {
+            const u = res.subUpdates?.find((x) => x.id === s.id);
+            return u ? { ...s, used: u.used } : s;
+          }),
+        );
+      }
       setShowCheckin(false);
       setBounce(true);
       setTimeout(() => setBounce(false), 700);
-      push("Checked in successfully 🎉");
+      push(
+        res.skipped?.length
+          ? `Round checked in 🎉 — skipped: ${res.skipped.join(", ")} (already at target)`
+          : "Checked in successfully 🎉",
+      );
     } catch (e) {
       push(errMsg(e), "error");
     } finally {
@@ -99,8 +116,19 @@ export default function CounterDetail({
   async function handleUndo() {
     setBusy("undo");
     try {
-      const res = await api<{ used: number }>(`/api/counters/${enc(id)}/undo`, { method: "POST" });
+      const res = await api<{ used: number; subUpdates?: { id: string; used: number }[] }>(
+        `/api/counters/${enc(id)}/undo`,
+        { method: "POST" },
+      );
       setState((s) => (s ? { ...s, used: res.used, history: s.history.slice(1) } : s));
+      if (res.subUpdates?.length) {
+        setSubs((list) =>
+          list.map((s) => {
+            const u = res.subUpdates?.find((x) => x.id === s.id);
+            return u ? { ...s, used: u.used } : s;
+          }),
+        );
+      }
       push("Last check-in undone", "warning");
     } catch (e) {
       push(errMsg(e), "error");
@@ -112,8 +140,14 @@ export default function CounterDetail({
   async function handleReset() {
     setBusy("reset");
     try {
-      await api(`/api/counters/${enc(id)}/reset`, { method: "POST" });
+      const res = await api<{ subIds?: string[] } | null>(`/api/counters/${enc(id)}/reset`, {
+        method: "POST",
+      });
       setState((s) => (s ? { ...s, used: 0, history: [] } : s));
+      const subIds = res?.subIds ?? [];
+      if (subIds.length) {
+        setSubs((list) => list.map((s) => (subIds.includes(s.id) ? { ...s, used: 0 } : s)));
+      }
       setAskReset(false);
       push("Counter has been reset", "warning");
     } catch (e) {
@@ -330,6 +364,12 @@ export default function CounterDetail({
           <h2 className="section-title">
             Sub-counters <span className="count-badge">{subs.length}</span>
           </h2>
+          {subs.length > 0 && (
+            <p className="subs-hint">
+              🔄 Round mode — each check-in of this counter also +1s every sub-counter: one
+              check-in = one complete round.
+            </p>
+          )}
           {subs.length > 0 ? (
             <div className="counter-grid">
               {subs.map((s) => (

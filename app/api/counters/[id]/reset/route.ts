@@ -12,7 +12,8 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     const { id } = await params;
 
     const store = await getStore();
-    const meta = (await store.listMetas(user.sub)).find((m) => m.id === id);
+    const metas = await store.listMetas(user.sub);
+    const meta = metas.find((m) => m.id === id);
     if (!meta) return jsonError("Counter not found", 404);
 
     const history = await store.getHistory(user.sub, id);
@@ -24,6 +25,21 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
       history.slice(0, 100).flatMap((r) => [deleteImage(r.image), deleteImage(r.thumb)]),
     );
 
-    return Response.json({ used: 0, history: [] });
+    // GROUP SEMANTICS: resetting a counter resets its sub-counters too.
+    const children = metas.filter((m) => m.parentId === id);
+    const subIds: string[] = [];
+    for (const child of children) {
+      const childHistory = await store.getHistory(user.sub, child.id);
+      await store.setUsed(user.sub, child.id, 0);
+      await store.clearHistory(user.sub, child.id);
+      await Promise.all(
+        childHistory
+          .slice(0, 100)
+          .flatMap((r) => [deleteImage(r.image), deleteImage(r.thumb)]),
+      );
+      subIds.push(child.id);
+    }
+
+    return Response.json({ used: 0, history: [], subIds });
   });
 }

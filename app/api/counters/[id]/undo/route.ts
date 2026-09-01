@@ -12,7 +12,8 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     const { id } = await params;
 
     const store = await getStore();
-    const meta = (await store.listMetas(user.sub)).find((m) => m.id === id);
+    const metas = await store.listMetas(user.sub);
+    const meta = metas.find((m) => m.id === id);
     if (!meta) return jsonError("Counter not found", 404);
 
     const removed = await store.popHistory(user.sub, id);
@@ -22,6 +23,24 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     // Best-effort cleanup of the removed record's view image + thumbnail.
     await Promise.all([deleteImage(removed.image), deleteImage(removed.thumb)]);
 
-    return Response.json({ used, removed });
+    // GROUP SEMANTICS: undoing a round also removes the auto-records that
+    // round created in each sub-counter (matched by origin tag).
+    const children = metas.filter((m) => m.parentId === id);
+    const subUpdates: { id: string; used: number }[] = [];
+    for (const child of children) {
+      const childHistory = await store.getHistory(user.sub, child.id);
+      const idx = childHistory.findIndex((r) => r.origin === removed.id);
+      if (idx === -1) continue;
+      await store.setHistory(
+        user.sub,
+        child.id,
+        childHistory.filter((_, i) => i !== idx),
+      );
+      const childUsed = Math.max(0, (await store.getUsed(user.sub, child.id)) - 1);
+      await store.setUsed(user.sub, child.id, childUsed);
+      subUpdates.push({ id: child.id, used: childUsed });
+    }
+
+    return Response.json({ used, removed, subUpdates });
   });
 }

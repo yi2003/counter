@@ -199,21 +199,21 @@ export async function localApi<T>(url: string, init?: RequestInit): Promise<T> {
     }
     if (action === "checkin" && method === "POST") {
       const body = bodyOf<{ note?: string | null; image?: string | null; thumb?: string | null }>(init);
-      const { used, record } = localCheckin(data, id, body ?? {});
+      const { used, record, subUpdates, skipped } = localCheckin(data, id, body ?? {});
       writeData(data);
-      return { used, record: await resolveRecord(record) } as T;
+      return { used, record: await resolveRecord(record), subUpdates, skipped } as T;
     }
     if (action === "undo" && method === "POST") {
-      const { used, imageRefs } = localUndo(data, id);
+      const { used, imageRefs, subUpdates } = localUndo(data, id);
       writeData(data);
       await idbDelMany(imageRefs.filter((r) => r.startsWith(REF_PREFIX)).map((r) => r.slice(REF_PREFIX.length)));
-      return { used } as T;
+      return { used, subUpdates } as T;
     }
     if (action === "reset" && method === "POST") {
-      const { imageRefs } = localReset(data, id);
+      const { imageRefs, subIds } = localReset(data, id);
       writeData(data);
       await idbDelMany(imageRefs.filter((r) => r.startsWith(REF_PREFIX)).map((r) => r.slice(REF_PREFIX.length)));
-      return null as T;
+      return { ok: true, subIds } as T;
     }
   }
 
