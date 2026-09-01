@@ -60,6 +60,34 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       subUpdates.push({ id: child.id, used: childNewUsed });
     }
 
+    // PARENT AUTO-ROUND: if this counter belongs to a parent and EVERY
+    // sub-counter of that parent has now caught up (>= parent.used + 1),
+    // the parent completes one round automatically.
+    let parentUpdate: { id: string; used: number } | undefined;
+    if (meta.parentId) {
+      const parent = metas.find((m) => m.id === meta.parentId);
+      if (parent) {
+        const parentUsed = await store.getUsed(user.sub, parent.id);
+        if (parentUsed < parent.total) {
+          const siblings = metas.filter((m) => m.parentId === parent.id);
+          const sibUsed = await Promise.all(
+            siblings.map(async (s) => ({ s, u: await store.getUsed(user.sub, s.id) })),
+          );
+          if (sibUsed.every(({ u }) => u >= parentUsed + 1)) {
+            const parentNewUsed = await store.incrUsed(user.sub, parent.id);
+            await store.pushHistory(user.sub, parent.id, {
+              id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+              timestamp: record.timestamp,
+              note: "Auto — all sub-counters completed",
+              image: null,
+              thumb: null,
+            });
+            parentUpdate = { id: parent.id, used: parentNewUsed };
+          }
+        }
+      }
+    }
+
     // Serve the proxy URL (not the raw private blob URL) so the new record
     // renders immediately — same rewriting as buildCounterState.
     return Response.json({
@@ -67,6 +95,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       record: withClientRecordImages([record])[0],
       subUpdates,
       skipped,
+      parentUpdate,
     });
   });
 }

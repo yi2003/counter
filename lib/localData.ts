@@ -165,6 +165,7 @@ export function localCheckin(
   record: CheckinRecord;
   subUpdates: { id: string; used: number }[];
   skipped: string[];
+  parentUpdate?: { id: string; used: number };
 } {
   const meta = data.counters.find((c) => c.id === id);
   if (!meta) throw new Error("Counter not found");
@@ -204,7 +205,36 @@ export function localCheckin(
     ];
     subUpdates.push({ id: child.id, used: data.used[child.id] });
   }
-  return { used: data.used[id], record, subUpdates, skipped };
+
+  // PARENT AUTO-ROUND: if this counter belongs to a parent and every
+  // sub-counter of that parent has caught up (>= parent.used + 1), the
+  // parent completes one round automatically. Direct store mutations —
+  // NOT a recursive localCheckin — so subs are not double-counted.
+  let parentUpdate: { id: string; used: number } | undefined;
+  if (meta.parentId) {
+    const parent = data.counters.find((c) => c.id === meta.parentId);
+    if (parent) {
+      const parentUsed = data.used[parent.id] ?? 0;
+      if (parentUsed < parent.total) {
+        const siblings = data.counters.filter((c) => c.parentId === parent.id);
+        if (siblings.every((s) => (data.used[s.id] ?? 0) >= parentUsed + 1)) {
+          data.used[parent.id] = parentUsed + 1;
+          data.history[parent.id] = [
+            {
+              id: genId(),
+              timestamp: record.timestamp,
+              note: "Auto — all sub-counters completed",
+              image: null,
+              thumb: null,
+            },
+            ...(data.history[parent.id] ?? []),
+          ];
+          parentUpdate = { id: parent.id, used: data.used[parent.id] };
+        }
+      }
+    }
+  }
+  return { used: data.used[id], record, subUpdates, skipped, parentUpdate };
 }
 
 export function localUndo(

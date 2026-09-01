@@ -199,9 +199,15 @@ export async function localApi<T>(url: string, init?: RequestInit): Promise<T> {
     }
     if (action === "checkin" && method === "POST") {
       const body = bodyOf<{ note?: string | null; image?: string | null; thumb?: string | null }>(init);
-      const { used, record, subUpdates, skipped } = localCheckin(data, id, body ?? {});
+      const { used, record, subUpdates, skipped, parentUpdate } = localCheckin(data, id, body ?? {});
       writeData(data);
-      return { used, record: await resolveRecord(record), subUpdates, skipped } as T;
+      return {
+        used,
+        record: await resolveRecord(record),
+        subUpdates,
+        skipped,
+        parentUpdate,
+      } as T;
     }
     if (action === "undo" && method === "POST") {
       const { used, imageRefs, subUpdates } = localUndo(data, id);

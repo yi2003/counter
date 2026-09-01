@@ -85,6 +85,7 @@ export default function CounterDetail({
         record: CheckinRecord;
         subUpdates?: { id: string; used: number }[];
         skipped?: string[];
+        parentUpdate?: { id: string; used: number };
       }>(`/api/counters/${enc(id)}/checkin`, {
         method: "POST",
         body: JSON.stringify({ note, image, thumb }),
@@ -104,7 +105,9 @@ export default function CounterDetail({
       push(
         res.skipped?.length
           ? `Round checked in 🎉 — skipped: ${res.skipped.join(", ")} (already at target)`
-          : "Checked in successfully 🎉",
+          : res.parentUpdate
+            ? "Checked in — round auto-completed for the parent ✅"
+            : "Checked in successfully 🎉",
       );
     } catch (e) {
       push(errMsg(e), "error");
@@ -210,12 +213,21 @@ export default function CounterDetail({
   async function handleQuickAdd(sub: CounterSummary) {
     setQuickBusy(sub.id);
     try {
-      const res = await api<{ used: number }>(`/api/counters/${enc(sub.id)}/checkin`, {
-        method: "POST",
-        body: JSON.stringify({}),
-      });
+      const res = await api<{ used: number; parentUpdate?: { id: string; used: number } }>(
+        `/api/counters/${enc(sub.id)}/checkin`,
+        { method: "POST", body: JSON.stringify({}) },
+      );
       setSubs((list) => list.map((s) => (s.id === sub.id ? { ...s, used: res.used } : s)));
       push(`+1 ${sub.name}`);
+      if (res.parentUpdate) {
+        // The last pending sub was checked in — the parent completed its round.
+        setState((s) =>
+          s && s.project.id === res.parentUpdate?.id
+            ? { ...s, used: res.parentUpdate.used }
+            : s,
+        );
+        push("All sub-counters done — round auto-checked in ✅");
+      }
     } catch (e) {
       push(errMsg(e), "error");
     } finally {
@@ -366,8 +378,9 @@ export default function CounterDetail({
           </h2>
           {subs.length > 0 && (
             <p className="subs-hint">
-              🔄 Round mode — each check-in of this counter also +1s every sub-counter: one
-              check-in = one complete round.
+              🔄 Round mode — a check-in here +1s every sub-counter (one check-in = one round),
+              and when every sub-counter has caught up, this counter auto-completes its next
+              round.
             </p>
           )}
           {subs.length > 0 ? (
