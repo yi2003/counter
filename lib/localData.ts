@@ -78,9 +78,9 @@ export function localCreateCounter(
     const parent = data.counters.find((c) => c.id === input.parentId);
     if (!parent) throw new Error("Parent counter not found");
     if (parent.rounder) {
-      // parent is a round → this is an exercise counter
+      // parent is a round → this is a sub-counter
     } else if (parent.parentId) {
-      throw new Error("Exercises cannot contain further counters");
+      throw new Error("Sub-counters cannot contain further counters");
     } else {
       // parent is a top counter → this is a round (rounder group)
       isRounder = true;
@@ -105,7 +105,7 @@ export function localCreateCounter(
 }
 
 /**
- * One-time shape migration for local data: exercises attached directly to a
+ * One-time shape migration for local data: sub-counters attached directly to a
  * counter are wrapped into a "Round 1" group. Returns true when changed.
  */
 export function localMigrateRounds(data: LocalData, counterId: string): boolean {
@@ -165,7 +165,7 @@ export function localUpdateCounter(
   return localGetCounter(data, id);
 }
 
-/** Collects cascade ids: the counter, its rounds, and all their exercises. */
+/** Collects cascade ids: the counter, its rounds, and all their sub-counters. */
 export function localCascadeIds(data: LocalData, id: string): string[] {
   const children = data.counters.filter((c) => c.parentId === id).map((c) => c.id);
   const childSet = new Set(children);
@@ -286,7 +286,7 @@ export function localCheckin(
   let used = data.used[id] ?? 0;
   if (!isRounder && used >= meta.total) throw new Error("Target already reached");
 
-  // A round check-in has no record of its own — it just +1s its exercises.
+  // A round check-in has no record of its own — it just +1s its sub-counters.
   let record: CheckinRecord | null = null;
   if (!isRounder) {
     record = {
@@ -301,8 +301,8 @@ export function localCheckin(
     data.history[id] = [record, ...(data.history[id] ?? [])];
   }
 
-  // GROUP SEMANTICS (rounds): checking in a round adds +1 to every exercise
-  // inside it (skipping exercises already at their target).
+  // GROUP SEMANTICS (rounds): checking in a round adds +1 to every sub-counter
+  // inside it (skipping sub-counters already at their target).
   const subUpdates: { id: string; used: number }[] = [];
   const skipped: string[] = [];
   for (const child of data.counters.filter((c) => c.parentId === id && c.rounder !== true)) {
@@ -327,7 +327,7 @@ export function localCheckin(
   }
 
   // PARENT AUTO-ROUND: resolve which (round → counter) pair this check-in may
-  // complete. When EVERY exercise of the round has reached its target and the
+  // complete. When EVERY sub-counter of the round has reached its target and the
   // counter hasn't counted this round yet (origin marker), the counter +1s.
   let round: CounterMeta | undefined;
   let counter: CounterMeta | undefined;
@@ -344,8 +344,8 @@ export function localCheckin(
 
   let parentUpdate: { id: string; used: number } | undefined;
   if (round && counter) {
-    const exercises = data.counters.filter((c) => c.parentId === round!.id && c.rounder !== true);
-    const allDone = exercises.length > 0 && exercises.every((s) => (data.used[s.id] ?? 0) >= s.total);
+    const subs = data.counters.filter((c) => c.parentId === round!.id && c.rounder !== true);
+    const allDone = subs.length > 0 && subs.every((s) => (data.used[s.id] ?? 0) >= s.total);
     if (allDone) {
       const counterUsed = data.used[counter.id] ?? 0;
       if (counterUsed < counter.total) {
@@ -387,7 +387,7 @@ export function localUndo(
   data.used[id] = Math.max(0, (data.used[id] ?? 1) - 1);
 
   // GROUP SEMANTICS: undoing a round check-in also removes the auto-records
-  // it created in each exercise (matched by origin tag).
+  // it created in each sub-counter (matched by origin tag).
   const subUpdates: { id: string; used: number }[] = [];
   for (const child of data.counters.filter(
     (c) => c.parentId === id && c.rounder !== true,
@@ -415,8 +415,8 @@ export function localReset(
   }
   data.history[id] = [];
   data.used[id] = 0;
-  // GROUP SEMANTICS: resetting a counter resets every exercise below it
-  // (rounds → exercises). Round markers live on the counter's history and
+  // GROUP SEMANTICS: resetting a counter resets every sub-counter below it
+  // (rounds → sub-counters). Round markers live on the counter's history and
   // are cleared above, so rounds can auto-count again after the reset.
   const subIds: string[] = [];
   const children = data.counters.filter((c) => c.parentId === id);

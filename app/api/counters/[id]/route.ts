@@ -13,7 +13,7 @@ export async function GET(_req: Request, { params }: Ctx) {
     const user = await requireUser();
     if (!user) return jsonError("Sign in required", 401);
     const { id } = await params;
-    // Pre-round data (exercises attached directly to the counter) is wrapped
+    // Pre-round data (sub-counters attached directly to the counter) is wrapped
     // into a "Round 1" group on first view.
     await ensureRoundMigration(user.sub, id);
     const state = await buildCounterState(user.sub, id);
@@ -61,7 +61,7 @@ export async function PUT(req: Request, { params }: Ctx) {
   });
 }
 
-/** Delete the counter — cascades to rounds and their exercises (images cleaned up, best effort). */
+/** Delete the counter — cascades to rounds and their sub-counters (images cleaned up, best effort). */
 export async function DELETE(_req: Request, { params }: Ctx) {
   return withErrors(async () => {
     const user = await requireUser();

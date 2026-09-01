@@ -37,16 +37,16 @@ export async function POST(req: Request) {
 
     // Optional parent. Child kind follows the parent:
     //   parent = top counter → child is a round (rounder group)
-    //   parent = round      → child is an exercise counter
+    //   parent = round      → child is a sub-counter
     const parentId = typeof body.parentId === "string" && body.parentId ? body.parentId : null;
     let isRounder = false;
     if (parentId) {
       const parent = metas.find((m) => m.id === parentId);
       if (!parent) return jsonError("Parent counter not found", 404);
       if (parent.rounder) {
-        // parent is a round → this is an exercise counter
+        // parent is a round → this is a sub-counter
       } else if (parent.parentId) {
-        return jsonError("Exercises cannot contain further counters", 400);
+        return jsonError("Sub-counters cannot contain further counters", 400);
       } else {
         isRounder = true;
       }

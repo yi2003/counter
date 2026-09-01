@@ -16,14 +16,14 @@ export default function NewCounterModal({
   onCreate: (name: string, total: number) => void;
   parentId?: string;
   parentName?: string;
-  /** "round" = group under a counter (no total), "exercise" = counter inside a round. */
-  mode?: "round" | "exercise";
+  /** "round" = group under a counter (no total), "sub" = sub-counter inside a round. */
+  mode?: "round" | "sub";
 }) {
   const [name, setName] = useState("");
   const [total, setTotal] = useState(mode === "round" ? "1" : "60");
   const [error, setError] = useState<string | null>(null);
   const isRound = mode === "round";
-  const isExercise = mode === "exercise";
+  const isSub = mode === "sub";
   const isChild = Boolean(parentId);
 
   useEffect(() => {
@@ -59,8 +59,8 @@ export default function NewCounterModal({
           <h3>
             {isRound
               ? `New round${parentName ? ` in “${parentName}”` : ""}`
-              : isExercise
-                ? `New exercise${parentName ? ` in “${parentName}”` : ""}`
+              : isSub
+                ? `New sub-counter${parentName ? ` in “${parentName}”` : ""}`
                 : "New counter"}
           </h3>
           <button className="icon-btn" onClick={onClose} aria-label="Close" disabled={busy}>
@@ -74,7 +74,7 @@ export default function NewCounterModal({
             type="text"
             value={name}
             maxLength={100}
-            placeholder={isRound ? "e.g. Round 1, Day 1…" : isExercise ? "e.g. Front chest push" : "e.g. Inhaler, Daily Water…"}
+            placeholder={isRound ? "e.g. Round 1, Day 1…" : isSub ? "e.g. Push-ups, Glasses of water…" : "e.g. Inhaler, Daily Water…"}
             onChange={(e) => setName(e.target.value)}
             disabled={busy}
             autoFocus

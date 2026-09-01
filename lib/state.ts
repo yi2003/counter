@@ -51,9 +51,9 @@ export async function listSummaries(
 
 /**
  * One-time shape migration: counters created before the round layer had
- * exercises attached directly (parentId = counter). Wrap them into a
- * "Round 1" group so the Counter → Round → exercise shape always holds.
- * Idempotent — runs only while direct exercise children exist.
+ * sub-counters attached directly (parentId = counter). Wrap them into a
+ * "Round 1" group so the Counter → Round → sub-counter shape always holds.
+ * Idempotent — runs only while direct sub-counter children exist.
  */
 export async function ensureRoundMigration(userId: string, counterId: string): Promise<void> {
   const store = await getStore();

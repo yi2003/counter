@@ -158,7 +158,7 @@ export default function Home({
       <footer className="footer">
         {counters.length === 0
           ? "Create your first counter to get started."
-          : "Tip: open a counter to add rounds & exercises, notes and photo proof."}
+          : "Tip: open a counter to add rounds & sub-counters, notes and photo proof."}
         {localMode ? (
           <span className="footer-storage">📁 This device only — data stays in this browser</span>
         ) : (

@@ -8,7 +8,7 @@ const MAX_COUNTERS = 50;
 
 /**
  * Duplicates a counter — and everything below it (rounds and their
- * exercises) — as a fresh, zeroed copy. The copy itself gets " (copy)"
+ * sub-counters) — as a fresh, zeroed copy. The copy itself gets " (copy)"
  * appended to its name; everything below keeps its original names. Cover
  * images are intentionally not copied (the blob object is owned by the
  * original's delete path).
@@ -25,7 +25,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     if (!meta) return jsonError("Counter not found", 404);
 
     // Children: for a top counter these are rounds; for a round these are
-    // exercises. Grandchildren: exercises of the copied rounds.
+    // sub-counters. Grandchildren: sub-counters of the copied rounds.
     const isRounder = meta.rounder === true;
     const childRounders = isRounder ? [] : metas.filter((m) => m.parentId === id && m.rounder === true);
     const directChildren = metas.filter((m) => m.parentId === id && m.rounder !== true);

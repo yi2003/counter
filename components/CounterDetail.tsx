@@ -21,7 +21,7 @@ import { clampPct, progressColor } from "@/lib/progress";
 
 type Busy = "checkin" | "undo" | "reset" | "config" | "delete" | "newsub" | null;
 type RoundGroup = CounterSummary & { subs: CounterSummary[] };
-type NewChildTarget = { mode: "round" | "exercise"; parentId: string; parentName: string };
+type NewChildTarget = { mode: "round" | "sub"; parentId: string; parentName: string };
 
 const enc = encodeURIComponent;
 
@@ -68,7 +68,7 @@ export default function CounterDetail({
             subs: list.counters.filter((x) => x.parentId === r.id),
           })),
       );
-      // Exercises sit inside a round — the "back" target is the owning counter.
+      // Sub-counters sit inside a round — the "back" target is the owning counter.
       const directParent = s.project.parentId
         ? (list.counters.find((c) => c.id === s.project.parentId) ?? null)
         : null;
@@ -122,7 +122,7 @@ export default function CounterDetail({
     }
   }
 
-  /** "+1 all" on a round: one set for every exercise inside it. */
+  /** "+1 all" on a round: +1 for every sub-counter inside it. */
   async function handleRoundCheckin(round: CounterSummary) {
     setQuickBusy(round.id);
     try {
@@ -329,7 +329,7 @@ export default function CounterDetail({
   const pct = project.total > 0 ? Math.round((used / project.total) * 100) : 0;
   const reached = used >= project.total;
   const isTopLevel = !project.parentId;
-  const exerciseCount = rounds.reduce((n, r) => n + r.subs.length, 0);
+  const subCount = rounds.reduce((n, r) => n + r.subs.length, 0);
 
   return (
     <main className="container">
@@ -442,12 +442,12 @@ export default function CounterDetail({
             Rounds <span className="count-badge">{rounds.length}</span>
           </h2>
           <p className="subs-hint">
-            🔄 Each round holds its exercises — when every exercise in a round reaches its target,
-            this counter auto-checks-in the round. “+1 all” adds one set to every exercise.
+            🔄 Each round holds its sub-counters — when every sub-counter in a round reaches its
+            target, this counter auto-checks-in the round. “+1 all” adds +1 to every sub-counter.
           </p>
           {rounds.length === 0 && (
             <p className="muted subs-empty">
-              No rounds yet — create your first round, then add exercises to it.
+              No rounds yet — create your first round, then add sub-counters to it.
             </p>
           )}
           {rounds.map((r) => {
@@ -460,7 +460,7 @@ export default function CounterDetail({
                   <span className="round-progress">
                     {roundDone
                       ? "✅ complete"
-                      : `${doneCount}/${r.subs.length} exercise${r.subs.length === 1 ? "" : "s"} done`}
+                      : `${doneCount}/${r.subs.length} sub-counter${r.subs.length === 1 ? "" : "s"} done`}
                   </span>
                   <span className="round-actions">
                     <button
@@ -468,7 +468,7 @@ export default function CounterDetail({
                       onClick={() => void handleRoundCheckin(r)}
                       disabled={quickBusy === r.id || busy !== null || roundDone}
                       title={
-                        roundDone ? "Round complete" : "Add one set to every exercise in this round"
+                        roundDone ? "Round complete" : "Add +1 to every sub-counter in this round"
                       }
                     >
                       {quickBusy === r.id ? <span className="spinner spinner-dark" /> : "+1 all"}
@@ -478,7 +478,7 @@ export default function CounterDetail({
                       onClick={() => void handleDuplicate(r)}
                       disabled={dupBusy === r.id || busy !== null}
                       aria-label={`Duplicate ${r.name}`}
-                      title="Duplicate this round (with exercises, zeroed)"
+                      title="Duplicate this round (with sub-counters, zeroed)"
                     >
                       {dupBusy === r.id ? (
                         <span className="spinner spinner-dark" />
@@ -491,7 +491,7 @@ export default function CounterDetail({
                       onClick={() => setConfirmRound(r)}
                       disabled={busy !== null}
                       aria-label={`Delete ${r.name}`}
-                      title="Delete this round and its exercises"
+                      title="Delete this round and its sub-counters"
                     >
                       <IconTrash size={15} />
                     </button>
@@ -532,7 +532,7 @@ export default function CounterDetail({
                         onClick={() => void handleDuplicate(s)}
                         disabled={dupBusy === s.id || busy !== null}
                         aria-label={`Duplicate ${s.name}`}
-                        title="Duplicate this exercise (zeroed, same target)"
+                        title="Duplicate this sub-counter (zeroed, same target)"
                       >
                         {dupBusy === s.id ? (
                           <span className="spinner spinner-dark" />
@@ -546,10 +546,10 @@ export default function CounterDetail({
                 <button
                   className="btn btn-ghost btn-sm round-add"
                   onClick={() =>
-                    setNewChild({ mode: "exercise", parentId: r.id, parentName: r.name })
+                    setNewChild({ mode: "sub", parentId: r.id, parentName: r.name })
                   }
                 >
-                  + Add exercise
+                  + Add sub-counter
                 </button>
               </div>
             );
@@ -614,7 +614,7 @@ export default function CounterDetail({
           title="Delete round?"
           message={`This permanently deletes “${confirmRound.name}”${
             rounds.find((r) => r.id === confirmRound.id)?.subs.length
-              ? ` and its ${rounds.find((r) => r.id === confirmRound.id)!.subs.length} exercise${
+              ? ` and its ${rounds.find((r) => r.id === confirmRound.id)!.subs.length} sub-counter${
                   rounds.find((r) => r.id === confirmRound.id)!.subs.length === 1 ? "" : "s"
                 }`
               : ""
@@ -628,7 +628,7 @@ export default function CounterDetail({
       {askReset && (
         <ConfirmDialog
           title="Reset counter?"
-          message={`This sets the count back to 0 and permanently deletes all ${history.length} check-in record${history.length === 1 ? "" : "s"}${exerciseCount > 0 ? ` across all ${exerciseCount} exercise${exerciseCount === 1 ? "" : "s"}` : ""} (including uploaded proof images). This cannot be undone.`}
+          message={`This sets the count back to 0 and permanently deletes all ${history.length} check-in record${history.length === 1 ? "" : "s"}${subCount > 0 ? ` across all ${subCount} sub-counter${subCount === 1 ? "" : "s"}` : ""} (including uploaded proof images). This cannot be undone.`}
           confirmLabel="Reset everything"
           busy={busy === "reset"}
           onConfirm={() => void handleReset()}
@@ -638,7 +638,7 @@ export default function CounterDetail({
       {askDelete && (
         <ConfirmDialog
           title="Delete counter?"
-          message={`This permanently deletes “${project.name}”${rounds.length > 0 ? ` with its ${rounds.length} round${rounds.length === 1 ? "" : "s"} and ${exerciseCount} exercise${exerciseCount === 1 ? "" : "s"}` : ""}, including all check-in records and uploaded images. This cannot be undone.`}
+          message={`This permanently deletes “${project.name}”${rounds.length > 0 ? ` with its ${rounds.length} round${rounds.length === 1 ? "" : "s"} and ${subCount} sub-counter${subCount === 1 ? "" : "s"}` : ""}, including all check-in records and uploaded images. This cannot be undone.`}
           confirmLabel="Delete counter"
           busy={busy === "delete"}
           onConfirm={() => void handleDelete()}

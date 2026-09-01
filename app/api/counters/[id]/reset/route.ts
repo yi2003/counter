@@ -26,8 +26,8 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
       history.slice(0, 100).flatMap((r) => [deleteImage(r.image), deleteImage(r.thumb)]),
     );
 
-    // …and every exercise below it: rounds → exercises (plus any legacy
-    // direct exercises). Round markers on the counter's history are cleared
+    // …and every sub-counter below it: rounds → sub-counters (plus any legacy
+    // direct sub-counters). Round markers on the counter's history are cleared
     // with the history, so rounds can auto-count again after the reset.
     const children = metas.filter((m) => m.parentId === id);
     const childIds = new Set(children.map((c) => c.id));

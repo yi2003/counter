@@ -11,8 +11,8 @@ export interface CounterMeta extends ProjectConfig {
   /** Set when this is a child of another counter. */
   parentId?: string | null;
   /**
-   * Rounder: a named round group under a counter (Counter → Round → exercises).
-   * It holds exercise counters; it has no count of its own.
+   * Rounder: a named round group under a counter (Counter → Round → sub-counters).
+   * It holds sub-counters; it has no count of its own.
    */
   rounder?: boolean;
 }

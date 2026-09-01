@@ -27,7 +27,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       return jsonError("Target already reached", 409);
     }
 
-    // A rounder check-in has no record of its own — it just +1s its exercises.
+    // A rounder check-in has no record of its own — it just +1s its sub-counters.
     let record: CheckinRecord | null = null;
     if (!isRounder) {
       record = {
@@ -42,7 +42,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     }
 
     // GROUP SEMANTICS (rounders): checking in a round adds +1 to every
-    // exercise inside it. Exercises already at their target are skipped.
+    // sub-counter inside it. Sub-counters already at their target are skipped.
     const children = metas.filter((m) => m.parentId === id && m.rounder !== true);
     const subUpdates: { id: string; used: number }[] = [];
     const skipped: string[] = [];
@@ -65,7 +65,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     }
 
     // PARENT AUTO-ROUND: resolve which (round → counter) pair this check-in
-    // may complete. When EVERY exercise of the round has reached its target
+    // may complete. When EVERY sub-counter of the round has reached its target
     // and the counter hasn't counted this round yet, the counter +1s itself.
     let round: CounterMeta | undefined;
     let counter: CounterMeta | undefined;
@@ -82,9 +82,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
     let parentUpdate: { id: string; used: number } | undefined;
     if (round && counter) {
-      const exercises = metas.filter((m) => m.parentId === round!.id && m.rounder !== true);
+      const subs = metas.filter((m) => m.parentId === round!.id && m.rounder !== true);
       const usages = await Promise.all(
-        exercises.map(async (s) => ({ t: s.total, u: await store.getUsed(user.sub, s.id) })),
+        subs.map(async (s) => ({ t: s.total, u: await store.getUsed(user.sub, s.id) })),
       );
       if (usages.length > 0 && usages.every(({ t, u }) => u >= t)) {
         const counterUsed = await store.getUsed(user.sub, counter.id);
