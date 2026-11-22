@@ -13,13 +13,14 @@ import ConfirmDialog from "@/components/ConfirmDialog";
 import HistoryList from "@/components/HistoryList";
 import Lightbox from "@/components/Lightbox";
 import NewCounterModal from "@/components/NewCounterModal";
+import EditHistoryModal from "@/components/EditHistoryModal";
 import ToastHost, { useToasts } from "@/components/ToastHost";
 import UserChip from "@/components/UserChip";
 import { IconBack, IconGear, IconTrash, IconClose, IconPencil } from "@/components/icons";
 import { CopyIcon } from "@/components/CounterCard";
 import { clampPct, progressColor } from "@/lib/progress";
 
-type Busy = "checkin" | "undo" | "reset" | "config" | "delete" | "newsub" | null;
+type Busy = "checkin" | "undo" | "reset" | "config" | "delete" | "newsub" | "edithistory" | null;
 type RoundGroup = CounterSummary & { subs: CounterSummary[] };
 type NewChildTarget = { mode: "round" | "sub"; parentId: string; parentName: string };
 
@@ -56,6 +57,7 @@ export default function CounterDetail({
   const [askDelete, setAskDelete] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
   const [bounce, setBounce] = useState(false);
+  const [editingHistory, setEditingHistory] = useState<{ record: CheckinRecord; index: number } | null>(null);
   const { toasts, push, dismiss } = useToasts();
   const router = useRouter();
 
@@ -371,6 +373,68 @@ export default function CounterDetail({
     }
   }
 
+  async function handleEditHistory(
+    recordId: string,
+    note: string,
+    timestamp: string,
+    images: PreparedImages | null,
+  ) {
+    setBusy("edithistory");
+    try {
+      let image: string | undefined;
+      let thumb: string | undefined;
+      if (images) {
+        const up = await uploadImages(images.view, images.thumb);
+        image = up.url;
+        thumb = up.thumbUrl;
+      }
+
+      const body: Record<string, unknown> = { note, timestamp };
+      if (images !== null) {
+        body.image = image;
+        body.thumb = thumb;
+      }
+
+      await api(`/api/counters/${enc(id)}/history/${enc(recordId)}`, {
+        method: "PUT",
+        body: JSON.stringify(body),
+      });
+
+      setEditingHistory(null);
+      push("Check-in updated");
+      await load();
+    } catch (e) {
+      push(errMsg(e), "error");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleDeleteHistory(recordId: string) {
+    setBusy("edithistory");
+    try {
+      const res = await api<{ used: number }>(`/api/counters/${enc(id)}/history/${enc(recordId)}`, {
+        method: "DELETE",
+      });
+
+      setState((s) => {
+        if (!s) return s;
+        return {
+          ...s,
+          used: res.used,
+          history: s.history.filter((r) => r.id !== recordId),
+        };
+      });
+
+      setEditingHistory(null);
+      push("Check-in deleted", "warning");
+    } catch (e) {
+      push(errMsg(e), "error");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   if (!state) {
     return (
       <main className="container center-screen">
@@ -678,7 +742,11 @@ export default function CounterDetail({
         <h2 className="section-title">
           History <span className="count-badge">{history.length}</span>
         </h2>
-        <HistoryList history={history} onPreview={setPreview} />
+        <HistoryList
+          history={history}
+          onPreview={setPreview}
+          onEdit={(record, index) => setEditingHistory({ record, index })}
+        />
       </section>
 
       <footer className="footer">
@@ -874,6 +942,18 @@ export default function CounterDetail({
         />
       )}
       {preview && <Lightbox url={preview} onClose={() => setPreview(null)} />}
+
+      {editingHistory && (
+        <EditHistoryModal
+          record={editingHistory.record}
+          index={editingHistory.index}
+          total={history.length}
+          onClose={() => setEditingHistory(null)}
+          onSave={handleEditHistory}
+          onDelete={handleDeleteHistory}
+          busy={busy === "edithistory"}
+        />
+      )}
 
       <ToastHost toasts={toasts} dismiss={dismiss} />
     </main>
