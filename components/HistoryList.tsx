@@ -25,8 +25,8 @@ export default function HistoryList({
   if (history.length === 0) {
     return (
       <div className="history-empty">
-        <p>No check-ins yet.</p>
-        <p className="muted">Tap “+ Check-in” to record your first one.</p>
+        <p>No check-ins recorded yet.</p>
+        <p className="muted">Tap the "+ Check-in" button above to record your first one with an optional note and photo.</p>
       </div>
     );
   }

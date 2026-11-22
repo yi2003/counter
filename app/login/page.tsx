@@ -37,11 +37,12 @@ export default async function LoginPage({
   return (
     <main className="container login-wrap">
       <div className="card login-card">
-        <h1 className="login-title">📋 Universal Check-in Counter</h1>
+        <h1 className="login-title">📋 Check-in Counter</h1>
         <p className="login-sub">
-          {configured
-            ? "Sign in with Google — your counters stay private under your account."
-            : "Sign-in is not configured on this deployment."}
+          Track anything you want to count with optional notes and photos.
+        </p>
+        <p className="login-example">
+          <strong>Examples:</strong> Daily medication doses, glasses of water, workout reps, habit streaks, or any recurring activity.
         </p>
 
         {configured ? (
@@ -53,24 +54,23 @@ export default async function LoginPage({
             <div className="login-or">or</div>
             <LocalModeButton />
             <p className="muted login-note">
-              Google keeps every account's counters private and synced across devices. Device-only
-              keeps data in this browser — no account, no sync, nothing leaves your phone.
+              <strong>Google sign-in:</strong> Your counters sync across all your devices and stay private to your account.<br/>
+              <strong>Device-only:</strong> Everything stays on this device in your browser — no account needed, no data ever leaves.
             </p>
           </>
         ) : (
           <>
             <p className="form-error">
-              This deployment is currently in <strong>public mode</strong>: anyone with the link
-              can view and edit the data. Set <code>GOOGLE_CLIENT_ID</code> and{" "}
-              <code>GOOGLE_CLIENT_SECRET</code> in Vercel to lock it to Google accounts.
+              ⚠️ <strong>Public access mode:</strong> Anyone with this link can view and edit counters. 
+              The site owner can enable Google sign-in for private accounts.
             </p>
             <Link className="btn btn-primary" href="/">
-              Enter as guest
+              Continue as guest
             </Link>
             <div className="login-or">or</div>
             <LocalModeButton />
             <p className="muted login-note">
-              Device-only mode keeps your counters in this browser — private, no sync.
+              <strong>Device-only mode:</strong> Your counters stay on this device only — no account, fully private.
             </p>
           </>
         )}
