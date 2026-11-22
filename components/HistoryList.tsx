@@ -18,15 +18,17 @@ function timeLabel(ts: string): string {
 export default function HistoryList({
   history,
   onPreview,
+  onEdit,
 }: {
   history: CheckinRecord[];
   onPreview: (url: string) => void;
+  onEdit: (record: CheckinRecord, index: number) => void;
 }) {
   if (history.length === 0) {
     return (
       <div className="history-empty">
-        <p>No check-ins yet.</p>
-        <p className="muted">Tap “+ Check-in” to record your first one.</p>
+        <p>No check-ins recorded yet.</p>
+        <p className="muted">Tap the "+ Check-in" button above to record your first one with an optional note and photo.</p>
       </div>
     );
   }
@@ -37,7 +39,11 @@ export default function HistoryList({
         const date = new Date(r.timestamp);
         return (
           <li key={r.id} className={`history-item c${i % 3}`}>
-            <div className="history-main">
+            <button
+              className="history-main history-clickable"
+              onClick={() => onEdit(r, i)}
+              aria-label={`Edit check-in #${history.length - i}`}
+            >
               <div className="history-top">
                 <time dateTime={r.timestamp} title={date.toLocaleString()}>
                   {timeLabel(r.timestamp)}
@@ -48,11 +54,14 @@ export default function HistoryList({
                 {r.note || "No note"}
               </p>
               <span className="history-fulltime">{date.toLocaleString()}</span>
-            </div>
+            </button>
             {r.image && (
               <button
                 className="thumb-btn"
-                onClick={() => r.image && onPreview(r.image)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  r.image && onPreview(r.image);
+                }}
                 aria-label="View full-size image"
               >
                 {/* List uses the tiny thumbnail; the lightbox loads the view image. */}

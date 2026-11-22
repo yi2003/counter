@@ -13,13 +13,14 @@ import ConfirmDialog from "@/components/ConfirmDialog";
 import HistoryList from "@/components/HistoryList";
 import Lightbox from "@/components/Lightbox";
 import NewCounterModal from "@/components/NewCounterModal";
+import EditHistoryModal from "@/components/EditHistoryModal";
 import ToastHost, { useToasts } from "@/components/ToastHost";
 import UserChip from "@/components/UserChip";
 import { IconBack, IconGear, IconTrash, IconClose, IconPencil } from "@/components/icons";
 import { CopyIcon } from "@/components/CounterCard";
 import { clampPct, progressColor } from "@/lib/progress";
 
-type Busy = "checkin" | "undo" | "reset" | "config" | "delete" | "newsub" | null;
+type Busy = "checkin" | "undo" | "reset" | "config" | "delete" | "newsub" | "edithistory" | null;
 type RoundGroup = CounterSummary & { subs: CounterSummary[] };
 type NewChildTarget = { mode: "round" | "sub"; parentId: string; parentName: string };
 
@@ -56,6 +57,7 @@ export default function CounterDetail({
   const [askDelete, setAskDelete] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
   const [bounce, setBounce] = useState(false);
+  const [editingHistory, setEditingHistory] = useState<{ record: CheckinRecord; index: number } | null>(null);
   const { toasts, push, dismiss } = useToasts();
   const router = useRouter();
 
@@ -371,6 +373,68 @@ export default function CounterDetail({
     }
   }
 
+  async function handleEditHistory(
+    recordId: string,
+    note: string,
+    timestamp: string,
+    images: PreparedImages | null,
+  ) {
+    setBusy("edithistory");
+    try {
+      let image: string | undefined;
+      let thumb: string | undefined;
+      if (images) {
+        const up = await uploadImages(images.view, images.thumb);
+        image = up.url;
+        thumb = up.thumbUrl;
+      }
+
+      const body: Record<string, unknown> = { note, timestamp };
+      if (images !== null) {
+        body.image = image;
+        body.thumb = thumb;
+      }
+
+      await api(`/api/counters/${enc(id)}/history/${enc(recordId)}`, {
+        method: "PUT",
+        body: JSON.stringify(body),
+      });
+
+      setEditingHistory(null);
+      push("Check-in updated");
+      await load();
+    } catch (e) {
+      push(errMsg(e), "error");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleDeleteHistory(recordId: string) {
+    setBusy("edithistory");
+    try {
+      const res = await api<{ used: number }>(`/api/counters/${enc(id)}/history/${enc(recordId)}`, {
+        method: "DELETE",
+      });
+
+      setState((s) => {
+        if (!s) return s;
+        return {
+          ...s,
+          used: res.used,
+          history: s.history.filter((r) => r.id !== recordId),
+        };
+      });
+
+      setEditingHistory(null);
+      push("Check-in deleted", "warning");
+    } catch (e) {
+      push(errMsg(e), "error");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   if (!state) {
     return (
       <main className="container center-screen">
@@ -418,7 +482,7 @@ export default function CounterDetail({
           <div>
             <h1 className="app-title">{project.name}</h1>
             <p className="app-subtitle">
-              {parent ? `Part of ${parent.name}` : "Universal check-in counter"}
+              {parent ? `Part of ${parent.name}` : "Track your progress with check-ins"}
             </p>
           </div>
         </div>
@@ -443,20 +507,19 @@ export default function CounterDetail({
 
       {localMode && (
         <div className="banner banner-info">
-          📁 Local mode — this counter and its history live in this browser only.
+          📁 <strong>Device-only mode</strong> — This counter and its history are saved only on this device.
         </div>
       )}
 
       {!localMode && storage === "local" && (
         <div className="banner banner-danger">
-          ⚠️ <strong>Data is not persistent here.</strong> Connect Vercel KV (dashboard → Storage →
-          Upstash Redis) so history survives redeploys and syncs to your other devices.
+          ⚠️ <strong>Data will be lost on restart.</strong> This site needs cloud storage to save your data permanently.
         </div>
       )}
 
       {!localMode && storage === "kv" && !blob && (
         <div className="banner banner-warning">
-          🖼️ Images are stored temporarily — connect Vercel Blob so photo proof survives redeploys.
+          📸 <strong>Photos won't be saved permanently.</strong> Your check-ins are saved, but photos need cloud storage.
         </div>
       )}
 
@@ -514,12 +577,13 @@ export default function CounterDetail({
             Rounds <span className="count-badge">{rounds.length}</span>
           </h2>
           <p className="subs-hint">
-            🔄 Each round holds its sub-counters — when every sub-counter in a round reaches its
-            target, this counter auto-checks-in the round. “+1 all” adds +1 to every sub-counter.
+            <strong>What are rounds?</strong> Group related activities together. For example, a "Morning Routine" round could contain 
+            items like "Medication", "Stretch", and "Water". When all items in a round are complete, this counter automatically 
+            records the round as done.
           </p>
           {rounds.length === 0 && (
             <p className="muted subs-empty">
-              No rounds yet — create your first round, then add sub-counters to it.
+              No rounds yet. Create a round to organize related check-ins together.
             </p>
           )}
           {rounds.map((r) => {
@@ -540,7 +604,7 @@ export default function CounterDetail({
                       onClick={() => void handleRoundCheckin(r)}
                       disabled={quickBusy === r.id || busy !== null || roundDone}
                       title={
-                        roundDone ? "Round complete" : "Add +1 to every sub-counter in this round"
+                        roundDone ? "Round complete" : "Check in all items at once"
                       }
                     >
                       {quickBusy === r.id ? <span className="spinner spinner-dark" /> : "+1 all"}
@@ -660,7 +724,7 @@ export default function CounterDetail({
                     setNewChild({ mode: "sub", parentId: r.id, parentName: r.name })
                   }
                 >
-                  + Add sub-counter
+                  + Add item to round
                 </button>
               </div>
             );
@@ -678,17 +742,23 @@ export default function CounterDetail({
         <h2 className="section-title">
           History <span className="count-badge">{history.length}</span>
         </h2>
-        <HistoryList history={history} onPreview={setPreview} />
+        <HistoryList
+          history={history}
+          onPreview={setPreview}
+          onEdit={(record, index) => setEditingHistory({ record, index })}
+        />
       </section>
 
       <footer className="footer">
         {localMode ? (
-          <span className="footer-storage">📁 This device only — data stays in this browser</span>
+          <span className="footer-storage">📁 Device-only mode</span>
         ) : (
           <span className="footer-storage">
             {storage === "kv"
-              ? `☁️ Cloud sync enabled (Vercel KV${blob ? " + Blob" : ""})`
-              : "💾 Local dev storage — add KV/Blob env vars to enable cross-device sync"}
+              ? blob
+                ? "☁️ Synced across devices"
+                : "☁️ Synced (photos not saved)"
+              : "💾 Development mode"}
           </span>
         )}
       </footer>
@@ -872,6 +942,18 @@ export default function CounterDetail({
         />
       )}
       {preview && <Lightbox url={preview} onClose={() => setPreview(null)} />}
+
+      {editingHistory && (
+        <EditHistoryModal
+          record={editingHistory.record}
+          index={editingHistory.index}
+          total={history.length}
+          onClose={() => setEditingHistory(null)}
+          onSave={handleEditHistory}
+          onDelete={handleDeleteHistory}
+          busy={busy === "edithistory"}
+        />
+      )}
 
       <ToastHost toasts={toasts} dismiss={dismiss} />
     </main>

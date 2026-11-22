@@ -98,7 +98,7 @@ export default function Home({
       <header className="topbar">
         <div>
           <h1 className="app-title">My Counters</h1>
-          <p className="app-subtitle">Universal check-in counter — tap one to start</p>
+          <p className="app-subtitle">Track your daily activities with check-ins</p>
         </div>
         <div className="topbar-actions">
           <UserChip user={user} />
@@ -115,33 +115,29 @@ export default function Home({
 
       {localMode && (
         <div className="banner banner-info">
-          📁 <strong>Local mode</strong> — counters are stored in this browser only and never sent
-          to a server. Clearing the browser's site data erases them. Use “Sign in to sync” in the
-          top bar to switch to a synced account.
+          📁 <strong>Device-only mode</strong> — Your counters are saved only on this device. 
+          To sync across devices, use "Sign in to sync" in the user menu above.
         </div>
       )}
 
       {!localMode && user.sub === "guest" && (
         <div className="banner banner-warning">
-          🔒 Public mode — anyone with this link can view and edit. Configure Google sign-in to
-          lock this app to your account.
+          ⚠️ <strong>Public access:</strong> Anyone with this link can view and edit these counters. 
+          The site owner can enable Google sign-in for private accounts.
         </div>
       )}
 
       {!localMode && storage === "local" && (
         <div className="banner banner-danger">
-          ⚠️ <strong>Your data is not persistent.</strong> No database is connected, so everything
-          (including history) is wiped on every redeploy. Fix: Vercel dashboard → your project →{" "}
-          <strong>Storage → Create Database → Upstash Redis</strong> → connect it → redeploy. The
-          footer will switch to “☁️ Cloud sync enabled”.
+          ⚠️ <strong>Data will be lost on restart.</strong> This site needs cloud storage to save your data permanently. 
+          Contact the site owner to enable data persistence.
         </div>
       )}
 
       {!localMode && storage === "kv" && !blob && (
         <div className="banner banner-warning">
-          🖼️ Counters and history are persistent now, but <strong>images are not</strong> — no Blob
-          store is connected. Vercel dashboard → <strong>Storage → Create Database → Blob</strong>{" "}
-          → connect it to keep photo proof.
+          📸 <strong>Photos won't be saved permanently.</strong> Your counters and history are saved, 
+          but photo proof needs cloud storage. Contact the site owner to enable photo storage.
         </div>
       )}
 
@@ -150,23 +146,25 @@ export default function Home({
           <CounterCard key={c.id} counter={c} onDuplicate={(id) => void handleDuplicate(id)} />
         ))}
         <button className="counter-card new-card" onClick={() => setShowNew(true)}>
-          + New counter
-          <span className="new-card-hint">Track anything — meds, reps, water, habits…</span>
+          + Create counter
+          <span className="new-card-hint">Track meds, water, workouts, habits — anything!</span>
         </button>
       </section>
 
       <footer className="footer">
         {counters.length === 0
-          ? "Create your first counter to get started."
-          : "Tip: open a counter to add rounds & sub-counters, notes and photo proof."}
+          ? "Create your first counter to start tracking!"
+          : "Tap any counter to view details, add check-ins with notes and photos."}
         {localMode ? (
-          <span className="footer-storage">📁 This device only — data stays in this browser</span>
+          <span className="footer-storage">📁 Device-only mode</span>
         ) : (
           storage && (
             <span className="footer-storage">
               {storage === "kv"
-                ? `☁️ Cloud sync enabled (Vercel KV${blob ? " + Blob" : ""})`
-                : "💾 Local dev storage — add KV/Blob env vars to enable cross-device sync"}
+                ? blob
+                  ? "☁️ Synced across devices"
+                  : "☁️ Synced (photos not saved)"
+                : "💾 Development mode"}
             </span>
           )
         )}

@@ -74,7 +74,7 @@ export default function NewCounterModal({
             type="text"
             value={name}
             maxLength={100}
-            placeholder={isRound ? "e.g. Round 1, Day 1…" : isSub ? "e.g. Push-ups, Glasses of water…" : "e.g. Inhaler, Daily Water…"}
+            placeholder={isRound ? "e.g. Morning Routine, Weekly Goals…" : isSub ? "e.g. Medication, Water, Exercise…" : "e.g. Daily Medication, Water Intake…"}
             onChange={(e) => setName(e.target.value)}
             disabled={busy}
             autoFocus

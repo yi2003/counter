@@ -89,19 +89,19 @@ export default function SettingsModal({
         </div>
 
         <label className="field">
-          <span className="field-label">Counter name</span>
+          <span className="field-label">Name</span>
           <input
             type="text"
             value={name}
             maxLength={100}
-            placeholder="My Counter"
+            placeholder="e.g. Daily Medication"
             onChange={(e) => setName(e.target.value)}
             disabled={locked}
           />
         </label>
 
         <label className="field">
-          <span className="field-label">Total target count</span>
+          <span className="field-label">Target (how many times to check in)</span>
           <input
             type="number"
             inputMode="numeric"
@@ -156,15 +156,14 @@ export default function SettingsModal({
         {error && <p className="form-error">{error}</p>}
 
         <div className="danger-zone">
-          <span className="field-label">Danger zone</span>
+          <span className="field-label">Delete counter</span>
           <button
             className="btn btn-ghost danger-text btn-sm"
             onClick={onDelete}
             disabled={locked}
-            title="Delete this counter and all its data"
+            title="Permanently delete this counter, all check-ins, and uploaded photos"
           >
-            {deleting ? <span className="spinner spinner-dark" /> : <IconTrash />} Delete this
-            counter
+            {deleting ? <span className="spinner spinner-dark" /> : <IconTrash />} Delete counter
           </button>
         </div>
 

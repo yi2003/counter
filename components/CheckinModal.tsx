@@ -85,7 +85,7 @@ export default function CheckinModal({
 
         <textarea
           className="note-input"
-          placeholder="Add a note (optional) — e.g. “Took after breakfast”"
+          placeholder="Add a note (optional) — e.g. 'Took with breakfast' or 'Felt great after workout'"
           value={note}
           maxLength={500}
           rows={3}
